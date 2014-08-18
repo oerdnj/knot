@@ -164,63 +164,6 @@ static int query_chaos(knot_pkt_t *pkt, knot_process_t *ctx)
 	return NS_PROC_DONE;
 }
 
-static int process_query_sign_response(knot_pkt_t *pkt, struct query_data *qdata)
-{
-	if (pkt->size == 0) {
-		// Nothing to sign.
-		return KNOT_EOK;
-	}
-
-	int ret = KNOT_EOK;
-	knot_pkt_t *query = qdata->query;
-	knot_sign_context_t *ctx = &qdata->sign;
-
-	/* KEY provided and verified TSIG or BADTIME allows signing. */
-	if (ctx->tsig_key != NULL && knot_tsig_can_sign(qdata->rcode_tsig)) {
-
-		/* Sign query response. */
-		dbg_ns("%s: signing response using key %p\n", __func__, ctx->tsig_key);
-		size_t new_digest_len = knot_tsig_digest_length(ctx->tsig_key->algorithm);
-		if (ctx->pkt_count == 0) {
-			ret = knot_tsig_sign(pkt->wire, &pkt->size, pkt->max_size,
-			                     ctx->tsig_digest, ctx->tsig_digestlen,
-			                     ctx->tsig_digest, &new_digest_len,
-			                     ctx->tsig_key, qdata->rcode_tsig,
-			                     ctx->tsig_time_signed);
-		} else {
-			ret = knot_tsig_sign_next(pkt->wire, &pkt->size, pkt->max_size,
-			                          ctx->tsig_digest, ctx->tsig_digestlen,
-			                          ctx->tsig_digest, &new_digest_len,
-			                          ctx->tsig_key,
-			                          pkt->wire, pkt->size);
-		}
-		if (ret != KNOT_EOK) {
-			goto fail; /* Failed to sign. */
-		} else {
-			++ctx->pkt_count;
-		}
-	} else {
-		/* Copy TSIG from query and set RCODE. */
-		if (query->tsig_rr && qdata->rcode_tsig != KNOT_RCODE_NOERROR) {
-			dbg_ns("%s: appending original TSIG\n", __func__);
-			ret = knot_tsig_add(pkt->wire, &pkt->size, pkt->max_size,
-			                    qdata->rcode_tsig, query->tsig_rr);
-			if (ret != KNOT_EOK) {
-				goto fail; /* Whatever it is, it's server fail. */
-			}
-		}
-	}
-
-	return ret;
-
-	/* Server failure in signing. */
-fail:
-	dbg_ns("%s: signing failed (%s)\n", __func__, knot_strerror(ret));
-	qdata->rcode = KNOT_RCODE_SERVFAIL;
-	qdata->rcode_tsig = KNOT_RCODE_NOERROR; /* Don't sign again. */
-	return ret;
-}
-
 /*! \brief Find zone for given question. */
 static const zone_t *answer_zone_find(const knot_pkt_t *query, knot_zonedb_t *zonedb)
 {
@@ -314,6 +257,12 @@ static int answer_edns_put(knot_pkt_t *resp, struct query_data *qdata)
 		return KNOT_EOK;
 	}
 
+	/* Write back extended RCODE. */
+	if (qdata->rcode_ext != 0) {
+		knot_wire_set_rcode(resp->wire, KNOT_EDNS_RCODE_LO(qdata->rcode_ext));
+		knot_edns_set_ext_rcode(&qdata->opt_rr, KNOT_EDNS_RCODE_HI(qdata->rcode_ext));
+	}
+
 	/* Reclaim reserved size. */
 	int ret = knot_pkt_reclaim(resp, knot_edns_wire_size(&qdata->opt_rr));
 	if (ret != KNOT_EOK) {
@@ -323,6 +272,24 @@ static int answer_edns_put(knot_pkt_t *resp, struct query_data *qdata)
 	/* Write to packet. */
 	assert(resp->current == KNOT_ADDITIONAL);
 	return knot_pkt_put(resp, COMPR_HINT_NONE, &qdata->opt_rr, 0);
+}
+
+/*! \brief Convert QNAME to lowercase format for processing. */
+static int qname_case_lower(knot_pkt_t *pkt)
+{
+	knot_dname_t *qname = (knot_dname_t *)knot_pkt_qname(pkt);
+	return knot_dname_to_lower(qname);
+}
+
+/*! \brief Restore QNAME letter case. */
+static void qname_case_restore(struct query_data *qdata, knot_pkt_t *pkt)
+{
+	/* If original QNAME is empty, Query is either unparsed or for root domain.
+	 * Either way, letter case doesn't matter. */
+	if (qdata->orig_qname[0] != '\0') {
+		memcpy(pkt->wire + KNOT_WIRE_HEADER_SIZE,
+		       qdata->orig_qname, qdata->query->qname_size);
+	}
 }
 
 /*! \brief Initialize response, sizes and find zone from which we're going to answer. */
@@ -350,12 +317,11 @@ static int prepare_answer(const knot_pkt_t *query, knot_pkt_t *resp, knot_proces
 	 * Already checked for absence of compression and length.
 	 */
 	memcpy(qdata->orig_qname, qname, query->qname_size);
-	ret = knot_dname_to_lower((knot_dname_t *)qname);
+	ret = qname_case_lower((knot_pkt_t *)query);
 	if (ret != KNOT_EOK) {
 		dbg_ns("%s: can't convert QNAME to lowercase (%d)\n", __func__, ret);
 		return ret;
 	}
-
 	/* Find zone for QNAME. */
 	qdata->zone = answer_zone_find(query, server->zone_db);
 
@@ -393,16 +359,11 @@ static int process_query_err(knot_pkt_t *pkt, knot_process_t *ctx)
 	knot_pkt_t *query = qdata->query;
 	knot_pkt_init_response(pkt, query);
 
-	/* If original QNAME is empty, Query is either unparsed or for root domain.
-	 * Either way, letter case doesn't matter. */
-	if (qdata->orig_qname[0] != '\0') {
-		memcpy(pkt->wire + KNOT_WIRE_HEADER_SIZE,
-		       qdata->orig_qname, query->qname_size);
-	}
+	/* Restore original QNAME. */
+	qname_case_restore(qdata, pkt);
 
 	/* Set RCODE. */
 	knot_wire_set_rcode(pkt->wire, qdata->rcode);
-
 
 	/* Add OPT and TSIG (best effort, send reply anyway if fails). */
 	if (pkt->current != KNOT_ADDITIONAL) {
@@ -516,7 +477,12 @@ static int process_query_out(knot_pkt_t *pkt, knot_process_t *ctx)
 	 * Postprocessing.
 	 */
 
+
 	if (next_state == NS_PROC_DONE || next_state == NS_PROC_FULL) {
+
+		/* Restore original QNAME. */
+		qname_case_restore(qdata, pkt);
+
 		if (pkt->current != KNOT_ADDITIONAL) {
 			knot_pkt_begin(pkt, KNOT_ADDITIONAL);
 		}
@@ -604,8 +570,10 @@ int process_query_verify(struct query_data *qdata)
 	ctx->tsig_digestlen = tsig_rdata_mac_length(query->tsig_rr);
 
 	/* Checking query. */
+	qname_case_restore(qdata, query);
 	int ret = knot_tsig_server_check(query->tsig_rr, query->wire,
 	                                 query->size, ctx->tsig_key);
+	qname_case_lower(query);
 
 	dbg_ns("%s: QUERY TSIG check result = %s\n", __func__, knot_strerror(ret));
 
@@ -635,6 +603,63 @@ int process_query_verify(struct query_data *qdata)
 		break;
 	}
 
+	return ret;
+}
+
+int process_query_sign_response(knot_pkt_t *pkt, struct query_data *qdata)
+{
+	if (pkt->size == 0) {
+		// Nothing to sign.
+		return KNOT_EOK;
+	}
+
+	int ret = KNOT_EOK;
+	knot_pkt_t *query = qdata->query;
+	knot_sign_context_t *ctx = &qdata->sign;
+
+	/* KEY provided and verified TSIG or BADTIME allows signing. */
+	if (ctx->tsig_key != NULL && knot_tsig_can_sign(qdata->rcode_tsig)) {
+
+		/* Sign query response. */
+		dbg_ns("%s: signing response using key %p\n", __func__, ctx->tsig_key);
+		size_t new_digest_len = knot_tsig_digest_length(ctx->tsig_key->algorithm);
+		if (ctx->pkt_count == 0) {
+			ret = knot_tsig_sign(pkt->wire, &pkt->size, pkt->max_size,
+			                     ctx->tsig_digest, ctx->tsig_digestlen,
+			                     ctx->tsig_digest, &new_digest_len,
+			                     ctx->tsig_key, qdata->rcode_tsig,
+			                     ctx->tsig_time_signed);
+		} else {
+			ret = knot_tsig_sign_next(pkt->wire, &pkt->size, pkt->max_size,
+			                          ctx->tsig_digest, ctx->tsig_digestlen,
+			                          ctx->tsig_digest, &new_digest_len,
+			                          ctx->tsig_key,
+			                          pkt->wire, pkt->size);
+		}
+		if (ret != KNOT_EOK) {
+			goto fail; /* Failed to sign. */
+		} else {
+			++ctx->pkt_count;
+		}
+	} else {
+		/* Copy TSIG from query and set RCODE. */
+		if (query->tsig_rr && qdata->rcode_tsig != KNOT_RCODE_NOERROR) {
+			dbg_ns("%s: appending original TSIG\n", __func__);
+			ret = knot_tsig_add(pkt->wire, &pkt->size, pkt->max_size,
+			                    qdata->rcode_tsig, query->tsig_rr);
+			if (ret != KNOT_EOK) {
+				goto fail; /* Whatever it is, it's server fail. */
+			}
+		}
+	}
+
+	return ret;
+
+	/* Server failure in signing. */
+fail:
+	dbg_ns("%s: signing failed (%s)\n", __func__, knot_strerror(ret));
+	qdata->rcode = KNOT_RCODE_SERVFAIL;
+	qdata->rcode_tsig = KNOT_RCODE_NOERROR; /* Don't sign again. */
 	return ret;
 }
 
