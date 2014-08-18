@@ -340,3 +340,5 @@ tests/ztree.c
 src/knot/updates/zone-update.c
 src/knot/updates/zone-update.h
 tests/zone-update.c
+src/knot/zone/adjust.c
+src/knot/zone/adjust.h

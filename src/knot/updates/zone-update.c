@@ -130,6 +130,11 @@ const zone_node_t *zone_update_get_node(zone_update_t *update, const knot_dname_
 
 	const zone_node_t *old_node =
 		zone_contents_find_node(update->zone, dname);
+	if (update->change == NULL) {
+		// No changeset, no changes.
+		return old_node;
+	}
+	
 	const zone_node_t *add_node =
 		zone_contents_find_node(update->change->add, dname);
 	const zone_node_t *rem_node =
