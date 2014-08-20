@@ -151,41 +151,15 @@ int zone_tree_get_less_or_equal(zone_tree_t *tree,
 		*previous = *found;
 		*found = NULL;
 	} else if (ret > 0) {
-		/* Previous should be the rightmost node.
-		 * For regular zone it is the node left of apex, but for some
-		 * cases like NSEC3, there is no such sort of thing (name wise).
+		/*
+		 * Previous should be the rightmost node.
 		 */
-		/*! \todo We could store rightmost node in zonetree probably. */
 		hattrie_iter_t *i = hattrie_iter_begin(tree, 1);
-		*previous = *(zone_node_t **)hattrie_iter_val(i); /* leftmost */
-		*previous = (*previous)->prev; /* rightmost */
+		zone_node_t *leftmost = *(zone_node_t **)hattrie_iter_val(i);
+		*previous = leftmost->prev; /* rightmost */
 		*found = NULL;
 		hattrie_iter_free(i);
 	}
-
-	/* Previous node for proof must be non-empty and authoritative. */
-	if (*previous &&
-	    ((*previous)->rrset_count == 0 || (*previous)->flags & NODE_FLAGS_NONAUTH)) {
-		*previous = (*previous)->prev;
-	}
-
-dbg_zone_exec_detail(
-		char *name = knot_dname_to_str(owner);
-		char *name_f = (*found != NULL)
-			? knot_dname_to_str((*found)->owner)
-			: "none";
-
-		dbg_zone_detail("Searched for owner %s in zone tree.\n",
-				name);
-		dbg_zone_detail("Exact match: %d\n", exact_match);
-		dbg_zone_detail("Found node: %p: %s.\n", *found, name_f);
-		dbg_zone_detail("Previous node: %p.\n", *previous);
-
-		free(name);
-		if (*found != NULL) {
-			free(name_f);
-		}
-);
 
 	return exact_match;
 }

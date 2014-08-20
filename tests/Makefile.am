@@ -9,6 +9,7 @@ LDADD = \
 	$(top_builddir)/src/libknots.la
 
 check_PROGRAMS = \
+	adjust				\
 	journal				\
 	slab				\
 	hattrie				\

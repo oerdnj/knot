@@ -115,7 +115,7 @@ static zone_node_t *node_deep_copy(const zone_node_t *node, mm_ctx_t *mm)
 
 /* ------------------------------- API -------------------------------------- */
 
-void zone_update_init(zone_update_t *update, const zone_contents_t *zone, changeset_t *change)
+void zone_update_init(zone_update_t *update, zone_contents_t *zone, changeset_t *change)
 {
 	update->zone = zone;
 	update->change = change;
