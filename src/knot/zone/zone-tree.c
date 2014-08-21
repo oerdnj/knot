@@ -191,10 +191,36 @@ zone_node_t *zone_tree_get_next(zone_tree_t *tree,
 	
 	n = (zone_node_t *)*fval;
 	/* Next node must be non-empty and auth. */
-	if (n->rrset_count == 0 || n->flags & NODE_FLAGS_NONAUTH) {
-		return zone_tree_get_next(tree, n->owner);
-	} else {
+//	if (n->rrset_count == 0 || n->flags & NODE_FLAGS_NONAUTH) {
+//		return zone_tree_get_next(tree, n->owner);
+//	} else {
 		return n;
+//	}
+}
+
+zone_node_t *zone_tree_get_prev(zone_tree_t *tree,
+                                const knot_dname_t *owner)
+{
+	if (tree == NULL || owner == NULL) {
+		return NULL;
+	}
+
+	uint8_t lf[KNOT_DNAME_MAXLEN];
+	knot_dname_lf(lf, owner, NULL);
+	lf[*lf - 1]--;
+	
+	value_t *fval = NULL;
+	hattrie_find_leq(tree, (char*)lf+1, *lf, &fval);
+	if (fval) {
+		return (zone_node_t *)(*fval);
+	} else {
+		/*
+		 * Previous should be the rightmost node.
+		 */
+		hattrie_iter_t *i = hattrie_iter_begin(tree, 1);
+		zone_node_t *leftmost = *(zone_node_t **)hattrie_iter_val(i);
+		hattrie_iter_free(i);
+		return leftmost->prev;
 	}
 }
 

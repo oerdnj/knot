@@ -161,6 +161,9 @@ int zone_tree_get_less_or_equal(zone_tree_t *tree,
 zone_node_t *zone_tree_get_next(zone_tree_t *tree,
                                 const knot_dname_t *owner);
 
+zone_node_t *zone_tree_get_prev(zone_tree_t *tree,
+                                const knot_dname_t *owner);
+
 /*!
  * \brief Removes node with the given owner from the zone tree and returns it.
  *

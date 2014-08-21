@@ -18,6 +18,8 @@
 
 #include "common-knot/hattrie/hat-trie.h"
 #include "knot/zone/adjust.h"
+#include "knot/dnssec/zone-nsec.h"
+#include "libknot/rrtype/nsec.h"
 
 struct adjust_walker {
 	hattrie_iter_t *itt;
@@ -40,22 +42,60 @@ static int walker_init(struct adjust_walker *walk, hattrie_t *t, bool sorted)
 
 static void walker_next(struct adjust_walker *walk)
 {
-	if (walk->curr && !hattrie_iter_finished(walk->itt)) {
+	if (hattrie_iter_finished(walk->itt)) {
+		return;
+	}
+	if (walk->curr) {
 		hattrie_iter_next(walk->itt);
+	}
+
+	zone_node_t *node = NULL;
+	if (!hattrie_iter_finished(walk->itt)) {
+		node = (zone_node_t *)*hattrie_iter_val(walk->itt);
 	}
 	
 	walk->prev = walk->curr;
-	walk->curr = (zone_node_t *)*hattrie_iter_val(walk->itt);
+	walk->curr = node;
 }
 
-static bool walker_finished(struct adjust_walker *walk)
+static bool node_is_glue(const zone_node_t *n)
 {
-	return walk->curr && hattrie_iter_finished(walk->itt);
+	const zone_node_t *parent = n->parent;
+	return parent &&
+	       (parent->flags & NODE_FLAGS_DELEG || parent->flags & NODE_FLAGS_NONAUTH);
+}
+
+static bool node_is_deleg(const zone_node_t *n)
+{
+	return node_rrtype_exists(n, KNOT_RRTYPE_NS) &&
+	       !node_rrtype_exists(n, KNOT_RRTYPE_SOA);
 }
 
 static void adjust_node_flags(zone_node_t *n)
 {
-	return;
+	if (node_is_glue(n)) {
+		n->flags = NODE_FLAGS_NONAUTH;
+	} else if (node_is_deleg(n)) {
+		n->flags = NODE_FLAGS_DELEG;
+	} else {
+		n->flags = NODE_FLAGS_AUTH;
+	}
+	
+	if (knot_dname_is_wildcard(n->owner) && n->parent) {
+		n->parent->flags |= NODE_FLAGS_WILDCARD_CHILD;
+	}
+}
+
+static int adjust_node_nsec3(zone_contents_t *zone, zone_node_t *n)
+{
+	knot_dname_t *hash = knot_create_nsec3_owner(n->owner, zone->apex->owner,
+	                                             &zone->nsec3_params);
+	if (hash == NULL) {
+		return KNOT_ERROR;
+	}
+	
+	zone_tree_get(zone->nsec3_nodes, hash, &n->nsec3_node);
+	return KNOT_EOK;
 }
 
 static void adjust_node_deletion(zone_tree_t *t, const zone_node_t *n)
@@ -81,10 +121,12 @@ static void adjust_node_addition(zone_tree_t *t, const zone_node_t *n)
 	zone_node_t *found = NULL;
 	zone_node_t *prev = NULL;
 	zone_tree_get_less_or_equal(t, n->owner, &found, &prev);
+	prev = zone_tree_get_prev(t, n->owner);
 	zone_node_t *next = zone_tree_get_next(t, n->owner);
-	assert(prev && next);
+	assert(prev && next && found);
 	assert(knot_dname_is_equal(found->owner, n->owner));
-	
+
+	found->prev = prev;
 	next->prev = found;
 	
 	adjust_node_flags(found);
@@ -99,18 +141,27 @@ static int apply_to_tree(zone_tree_t *t_walk, zone_tree_t *t_find,
 		return ret;
 	}
 
-	while (!walker_finished(&walk)) {
+	do {
 		walker_next(&walk);
 		f(t_find, walk.curr);
-	}
+	} while(walk.curr);
 	
 	return KNOT_EOK;
+}
+
+static bool tree_empty(const zone_contents_t *part)
+{
+	return hattrie_weight(part->nodes) == 1 && part->apex->rrset_count == 0;
 }
 
 static int apply_to_part(const zone_contents_t *part, zone_contents_t *zone,
                          void (*f)(zone_tree_t *, const zone_node_t *))
 {
-	int ret = apply_to_tree(part->nodes, zone->nodes, f);
+	int ret = KNOT_EOK;
+	if (!tree_empty(part)) {
+		ret = apply_to_tree(part->nodes, zone->nodes, f);
+	}
+	
 	if (part->nsec3_nodes && ret == KNOT_EOK) {
 		if (zone->nsec3_nodes == NULL) {
 			//TODO: adjust full NSEC3

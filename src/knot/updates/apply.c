@@ -362,15 +362,10 @@ static int apply_replace_soa(zone_contents_t *contents, changeset_t *chset)
 static int apply_single(zone_contents_t *contents, changeset_t *chset,
                            bool master)
 {
-	/*
-	 * Applies one changeset to the zone. Checks if the changeset may be
-	 * applied (i.e. the origin SOA (soa_from) has the same serial as
-	 * SOA in the zone apex.
-	 */
-
-	// check if serial matches
+	// check if soa_from matches zone's soa
 	const knot_rdataset_t *soa = node_rdataset(contents->apex, KNOT_RRTYPE_SOA);
-	if (soa == NULL || knot_soa_serial(soa) != knot_soa_serial(&chset->soa_from->rrs)) {
+	assert(soa);
+	if (!knot_rdataset_eq(soa, &chset->soa_from->rrs)) {
 		return KNOT_EINVAL;
 	}
 
@@ -420,6 +415,7 @@ static int prepare_zone_copy(zone_contents_t *old_contents,
 static int finalize_updated_zone(zone_contents_t *contents_copy,
                                  bool set_nsec3_names)
 {
+	return KNOT_EOK;
 	if (contents_copy == NULL) {
 		return KNOT_EINVAL;
 	}

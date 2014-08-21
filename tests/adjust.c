@@ -24,21 +24,27 @@ static const char *zone_str =
 "test. 3600 IN SOA a. b. 1 1 1 1 1\n"
 "b.test. IN TXT \"test\"\n"
 "e.test. IN TXT \"test\"\n"
-"g.test. IN TXT \"test\"\n";
+"x.test. IN TXT \"test\"\n";
 
 static const char *add1 =
 "test. 3600 IN SOA a. b. 2 1 1 1 1\n"
-"c.test. IN TXT \"test2\"\n";
+"c.test. IN TXT \"test\"\n"
+"d.test. IN TXT \"test\"\n";
 
 static const char *del1 =
-"g.test. IN TXT \"test\"\n";
+"test. 3600 IN SOA a. b. 3 1 1 1 1\n"
+"x.test. IN TXT \"test\"\n";
+
+static const char *del2 =
+"test. 3600 IN SOA a. b. 4 1 1 1 1\n"
+"b.test. IN TXT \"test\"\n"
+"x.test. IN TXT \"test\"\n";
 
 struct adjust_params {
 	zcreator_t *zc;
 	changeset_t *ch;
 };
 
-/*! \brief Creates RR from parser input, passes it to handling function. */
 static void scanner_process(zs_scanner_t *scanner)
 {
 	struct adjust_params *params = scanner->data;
@@ -48,15 +54,20 @@ static void scanner_process(zs_scanner_t *scanner)
 	int ret = knot_rrset_add_rdata(&rr, scanner->r_data, scanner->r_data_length,
 	                               scanner->r_ttl, NULL);
 	assert(ret == KNOT_EOK);
-	if (rr.type == KNOT_RRTYPE_SOA) {
+	if (rr.type == KNOT_RRTYPE_SOA && params->ch) {
+		// Store SOA into changeset, do not add to zone.
 		knot_rrset_free(&params->ch->soa_to, NULL);
 		params->ch->soa_to = knot_rrset_copy(&rr, NULL);
 		assert(params->ch->soa_to);
+		knot_rdataset_clear(&rr.rrs, NULL);
+		return;
 	}
-	zcreator_step(params->zc, &rr);
+	ret = zcreator_step(params->zc, &rr);
+	assert(ret == KNOT_EOK);
 	knot_rdataset_clear(&rr.rrs, NULL);
 }
 
+// Iterates through the zone and checks previous pointers
 static bool test_prev_for_tree(zone_tree_t *t)
 {
 	if (t == NULL) {
@@ -72,6 +83,8 @@ static bool test_prev_for_tree(zone_tree_t *t)
 	while(!hattrie_iter_finished(itt)) {
 		prev = curr;
 		curr = (zone_node_t *)(*hattrie_iter_val(itt));
+		printf("%s->%s ", knot_dname_to_str(curr->prev->owner),
+		       knot_dname_to_str(curr->owner));
 		if (prev) {
 			if (curr->prev != prev) {
 				hattrie_iter_free(itt);
@@ -80,6 +93,8 @@ static bool test_prev_for_tree(zone_tree_t *t)
 		}
 		hattrie_iter_next(itt);
 	}
+	
+	printf("\n");
 	
 	hattrie_iter_free(itt);
 	return first->prev == curr;
@@ -100,12 +115,16 @@ static void add_and_update(zone_contents_t *zone, changeset_t *ch,
 	ch->soa_from = node_create_rrset(zone->apex, KNOT_RRTYPE_SOA);
 	assert(ch->soa_to && ch->soa_from);
 	ret = apply_changeset_directly(zone, ch);
+	hattrie_build_index(zone->nodes);
+	if (zone->nsec3_nodes) {
+		hattrie_build_index(zone->nsec3_nodes);
+	}
 	assert(ret == KNOT_EOK);
 }
 
 int main(int argc, char *argv[])
 {
-	plan(1);
+	plan(5);
 	
 	// Fill zone
 	knot_dname_t *owner = knot_dname_from_str("test.");
@@ -113,9 +132,7 @@ int main(int argc, char *argv[])
 	zone_contents_t *zone = zone_contents_new(owner);
 	assert(zone);
 	zcreator_t zc = {.z = zone, .master = true, .ret = KNOT_EOK };
-	changeset_t ch;
-	changeset_init(&ch, owner);
-	struct adjust_params params = {.zc = &zc, .ch = &ch };
+	struct adjust_params params = {.zc = &zc, .ch = NULL };
 	zs_scanner_t *sc = zs_scanner_create("test.", KNOT_CLASS_IN, 3600, scanner_process,
 	                                     NULL, &params);
 	assert(sc);
@@ -126,15 +143,55 @@ int main(int argc, char *argv[])
 	assert(test_prev(zone));
 	
 	// Init zone update structure
+	changeset_t ch;
+	changeset_init(&ch, owner);
 	zone_update_t up;
 	zone_update_init(&up, zone, &ch);
-	zc.z = ch.add;
 	
 	// Add a record
+	zc.z = ch.add;
+	params.ch = &ch;
 	add_and_update(zone, &ch, sc, add1);
 	
 	ret = zone_adjust(&up);
 	ok(ret == KNOT_EOK && test_prev(zone), "zone adjust: addition");
+	changeset_clear(&ch);
+	changeset_init(&ch, owner);
+	
+	// Remove a record
+	zc.z = ch.remove;
+	add_and_update(zone, &ch, sc, add1);
+	ret = zone_adjust(&up);
+	ok(ret == KNOT_EOK && test_prev(zone), "zone adjust: deletion");
+	changeset_clear(&ch);
+	changeset_init(&ch, owner);
+	
+	// Remove the last record
+	zc.z = ch.remove;
+	add_and_update(zone, &ch, sc, del1);
+	ret = zone_adjust(&up);
+	ok(ret == KNOT_EOK && test_prev(zone), "zone adjust: delete last");
+	changeset_clear(&ch);
+	changeset_init(&ch, owner);
+	
+	// Add record that will become last
+	zc.z = ch.add;
+	add_and_update(zone, &ch, sc, del1);
+	ret = zone_adjust(&up);
+	ok(ret == KNOT_EOK && test_prev(zone), "zone adjust: add last");
+	changeset_clear(&ch);
+	changeset_init(&ch, owner);
+	
+	// Add and remove records
+	// Add record that will become last
+	zc.z = ch.add;
+	add_and_update(zone, &ch, sc, add1);
+	zc.z = ch.remove;
+	add_and_update(zone, &ch, sc, del2);
+	ret = zone_adjust(&up);
+	ok(ret == KNOT_EOK && test_prev(zone), "zone adjust: add and remove");
+	changeset_clear(&ch);
+	changeset_init(&ch, owner);
 	
 	return 0;
 }

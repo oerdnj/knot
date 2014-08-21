@@ -178,6 +178,9 @@ int main(int argc, char *argv[])
 		value_t *val;
 		hattrie_find_next(trie, keys[i], strlen(keys[i]), &val);
 		passed = val && *val == (void *)keys[(i + 1)];
+		if (!passed) {
+			printf("%s: %s != %s\n", keys[i], *val, keys[i + 1]);
+		}
 	}
 	ok(passed, "hattrie: find next for all keys");
 	

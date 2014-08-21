@@ -439,7 +439,7 @@ int hhash_find_next(hhash_t* tbl, const char* key, uint16_t len, value_t** dst)
 		return 1;
 	}
 	
-	int k = BIN_SEARCH_FIRST_GE_CMP(tbl, tbl->weight, CMP_LE, key, len);
+	int k = BIN_SEARCH_FIRST_GE_CMP(tbl, tbl->weight, CMP_LE, key, len) - 1;
 	/* Found prev or equal, we want next */
 	if (k + 1 < tbl->weight) {
 		hhelem_t *found = tbl->item + tbl->index[k + 1];
