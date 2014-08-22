@@ -37,7 +37,7 @@ extern "C" {
 
 typedef struct hattrie_t_ hattrie_t;
 
-hattrie_t* hattrie_create (void);              //< Create an empty hat-trie.
+hattrie_t*	hattrie_create (void);              //< Create an empty hat-trie.
 void       hattrie_free   (hattrie_t*);        //< Free all memory used by a trie.
 void       hattrie_clear  (hattrie_t*);        //< Remove all entries.
 size_t     hattrie_weight (const hattrie_t*);  //< Number of entries
@@ -75,6 +75,7 @@ value_t* hattrie_tryget (hattrie_t*, const char* key, size_t len);
 int hattrie_find_leq (hattrie_t*, const char* key, size_t len, value_t** dst);
 /** Find a next value for given key, returning NULL if it does not exist. */
 int hattrie_find_next (hattrie_t* T, const char* key, size_t len, value_t **dst);
+value_t *hattrie_find_rightmost_node(hattrie_t* T);
 
 /** Delete a given key from trie. Returns 0 if successful or -1 if not found.
  */

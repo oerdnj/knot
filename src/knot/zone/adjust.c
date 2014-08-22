@@ -21,48 +21,12 @@
 #include "knot/dnssec/zone-nsec.h"
 #include "libknot/rrtype/nsec.h"
 
-struct adjust_walker {
-	hattrie_iter_t *itt;
-	zone_node_t *prev;
-	zone_node_t *curr;
-};
-
-static int walker_init(struct adjust_walker *walk, hattrie_t *t, bool sorted)
-{
-	walk->itt = hattrie_iter_begin(t, sorted);
-	if (walk->itt == NULL) {
-		return KNOT_ENOMEM;
-	}
-	
-	walk->curr = NULL;
-	walk->prev = NULL;
-	
-	return KNOT_EOK;
-}
-
-static void walker_next(struct adjust_walker *walk)
-{
-	if (hattrie_iter_finished(walk->itt)) {
-		return;
-	}
-	if (walk->curr) {
-		hattrie_iter_next(walk->itt);
-	}
-
-	zone_node_t *node = NULL;
-	if (!hattrie_iter_finished(walk->itt)) {
-		node = (zone_node_t *)*hattrie_iter_val(walk->itt);
-	}
-	
-	walk->prev = walk->curr;
-	walk->curr = node;
-}
+typedef void (*adjust_callback_t)(zone_tree_t *, zone_contents_t *, zone_node_t *);
 
 static bool node_is_glue(const zone_node_t *n)
 {
-	const zone_node_t *parent = n->parent;
-	return parent &&
-	       (parent->flags & NODE_FLAGS_DELEG || parent->flags & NODE_FLAGS_NONAUTH);
+	return n->parent &&
+	       (n->parent->flags & NODE_FLAGS_DELEG || n->parent->flags & NODE_FLAGS_NONAUTH);
 }
 
 static bool node_is_deleg(const zone_node_t *n)
@@ -71,6 +35,7 @@ static bool node_is_deleg(const zone_node_t *n)
 	       !node_rrtype_exists(n, KNOT_RRTYPE_SOA);
 }
 
+// TODO do this while inserting, in new zone API
 static void adjust_node_flags(zone_node_t *n)
 {
 	if (node_is_glue(n)) {
@@ -88,22 +53,48 @@ static void adjust_node_flags(zone_node_t *n)
 
 static int adjust_node_nsec3(zone_contents_t *zone, zone_node_t *n)
 {
-	knot_dname_t *hash = knot_create_nsec3_owner(n->owner, zone->apex->owner,
-	                                             &zone->nsec3_params);
-	if (hash == NULL) {
-		return KNOT_ERROR;
+	if (zone->nsec3_nodes) {
+		knot_dname_t *hash = knot_create_nsec3_owner(n->owner, zone->apex->owner,
+		                                             &zone->nsec3_params);
+		if (hash == NULL) {
+			return KNOT_ERROR;
+		}
+		knot_dname_to_lower(hash);
+		zone_tree_get(zone->nsec3_nodes, hash, &n->nsec3_node);
+		if (n->nsec3_node) {
+			// Set backward pointer (NSEC3 -> normal)
+			n->nsec3_node->nsec3_node = n;
+		}
 	}
 	
-	zone_tree_get(zone->nsec3_nodes, hash, &n->nsec3_node);
 	return KNOT_EOK;
 }
 
-static void adjust_node_deletion(zone_tree_t *t, const zone_node_t *n)
+static void adjust_node_full(zone_tree_t *t, zone_contents_t *zone,
+                             zone_node_t *n)
 {
+	UNUSED(t);
+	adjust_node_flags(n);
+	adjust_node_nsec3(zone, n);
+}
+
+static void adjust_nsec3_node_full(zone_tree_t *t, zone_contents_t *zone,
+                                   zone_node_t *n)
+{
+	UNUSED(t);
+	UNUSED(zone);
+	adjust_node_flags(n);
+}
+
+static void adjust_node_deletion(zone_tree_t *t, zone_contents_t *zone,
+                                 zone_node_t *n)
+{
+	UNUSED(zone);
 	zone_node_t *found = NULL;
 	zone_tree_get(t, n->owner, &found);
 	if (found) {
 		adjust_node_flags(found);
+		// TODO: wildcard child fixed?
 		// Node stays, nothing more to fix
 		return;
 	}
@@ -116,7 +107,8 @@ static void adjust_node_deletion(zone_tree_t *t, const zone_node_t *n)
 	next->prev = prev;
 }
 
-static void adjust_node_addition(zone_tree_t *t, const zone_node_t *n)
+static void adjust_node_addition(zone_tree_t *t, zone_contents_t *zone,
+                                 zone_node_t *n)
 {
 	zone_node_t *found = NULL;
 	zone_node_t *prev = NULL;
@@ -130,21 +122,42 @@ static void adjust_node_addition(zone_tree_t *t, const zone_node_t *n)
 	next->prev = found;
 	
 	adjust_node_flags(found);
+	adjust_node_nsec3(zone, found);
 }
 
-static int apply_to_tree(zone_tree_t *t_walk, zone_tree_t *t_find,
-                         void (*f)(zone_tree_t *, const zone_node_t *))
+static bool set_prev(adjust_callback_t cb)
 {
-	struct adjust_walker walk;
-	int ret = walker_init(&walk, t_walk, false);
-	if (ret != KNOT_EOK) {
-		return ret;
+	return cb == adjust_node_full || cb == adjust_nsec3_node_full;
+}
+
+static int apply_to_tree(zone_contents_t *zone,
+                         zone_tree_t *t_walk, zone_tree_t *t_find,
+                         adjust_callback_t cb, bool sort)
+{
+	hattrie_iter_t *itt = hattrie_iter_begin(t_walk, sort);
+	if (itt == NULL) {
+		return KNOT_ERROR;
 	}
 
-	do {
-		walker_next(&walk);
-		f(t_find, walk.curr);
-	} while(walk.curr);
+	zone_node_t *first = (zone_node_t *)(*hattrie_iter_val(itt));
+	zone_node_t *curr = NULL;
+	zone_node_t *prev = NULL;
+	while(!hattrie_iter_finished(itt)) {
+		curr = (zone_node_t *)(*hattrie_iter_val(itt));
+		cb(t_find, zone, curr);
+		if (set_prev(cb) && prev) {
+			curr->prev = prev;
+		}
+		prev = curr;
+		hattrie_iter_next(itt);
+	}
+	
+	if (set_prev(cb)) {
+		// Connect first to last.
+		assert(first && prev);
+		first->prev = prev;
+	}
+	hattrie_iter_free(itt);
 	
 	return KNOT_EOK;
 }
@@ -155,18 +168,17 @@ static bool tree_empty(const zone_contents_t *part)
 }
 
 static int apply_to_part(const zone_contents_t *part, zone_contents_t *zone,
-                         void (*f)(zone_tree_t *, const zone_node_t *))
+                         adjust_callback_t cb)
 {
 	int ret = KNOT_EOK;
 	if (!tree_empty(part)) {
-		ret = apply_to_tree(part->nodes, zone->nodes, f);
+		ret = apply_to_tree(zone, part->nodes, zone->nodes, cb, false);
 	}
 	
-	if (part->nsec3_nodes && ret == KNOT_EOK) {
-		if (zone->nsec3_nodes == NULL) {
-			//TODO: adjust full NSEC3
-		}
-		ret = apply_to_tree(part->nsec3_nodes, zone->nsec3_nodes, f);
+	if (part->nsec3_nodes && zone->nsec3_nodes && ret == KNOT_EOK) {
+		// Only apply for NSEC3 nodes when there are some left.
+		ret = apply_to_tree(zone, part->nsec3_nodes, zone->nsec3_nodes,
+		                    cb, false);
 	}
 	
 	return ret;
@@ -184,18 +196,36 @@ static int partial_adjust(zone_contents_t *zone, const changeset_t *ch)
 
 static int full_adjust(zone_contents_t *zone)
 {
+	int ret = apply_to_tree(zone, zone->nodes, NULL, adjust_node_full, true);
+	if (ret == KNOT_EOK && zone->nsec3_nodes) {
+		ret = apply_to_tree(zone, zone->nsec3_nodes, NULL, adjust_nsec3_node_full, true);
+	}
 	
-	return KNOT_EOK;
+	return ret;
+}
+
+static bool nsec3param_changed(const zone_update_t *up)
+{
+	return node_rrtype_exists(up->change->add->apex, KNOT_RRTYPE_NSEC3PARAM) ||
+	       node_rrtype_exists(up->change->remove->apex, KNOT_RRTYPE_NSEC3PARAM);
 }
 
 /* ------------------------------- API -------------------------------------- */
 
 int zone_adjust(zone_update_t *up)
 {
-	if (up->change) {
+	// Build indices for lookup and sorted walk.
+	hattrie_build_index(up->zone->nodes);
+	if (up->zone->nsec3_nodes) {
+		hattrie_build_index(up->zone->nsec3_nodes);
+	}
+	
+	if (up->change && !nsec3param_changed(up)) {
 		return partial_adjust(up->zone, up->change);
 	} else {
 		return full_adjust(up->zone);
 	}
+	
+	// TODO: nsec3param adjust (or better yet, remove)
 }
 

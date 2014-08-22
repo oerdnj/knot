@@ -75,7 +75,7 @@ const zone_node_t *zone_contents_find_node(const zone_contents_t *contents,
                                            const knot_dname_t *name);
 
 /*!
- * \brief Tries to find domain name in the given zone using AVL tree.
+ * \brief Tries to find domain name in the given zone using AVL tree.T
  *
  * \param[in] zone Zone to search for the name.
  * \param[in] name Domain name to search for.

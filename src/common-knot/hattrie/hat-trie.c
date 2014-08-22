@@ -866,6 +866,11 @@ int hattrie_find_next (hattrie_t* T, const char* key, size_t len, value_t **dst)
     return ret;
 }
 
+value_t *hattrie_find_rightmost_node(hattrie_t* T)
+{
+	return hattrie_find_rightmost(T->root);
+}
+
 int hattrie_del(hattrie_t* T, const char* key, size_t len)
 {
     node_ptr parent = T->root;

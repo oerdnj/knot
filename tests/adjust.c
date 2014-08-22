@@ -19,6 +19,7 @@
 #include "knot/zone/adjust.h"
 #include "knot/zone/zonefile.h"
 #include "knot/updates/apply.h"
+#include "knot/dnssec/zone-nsec.h"
 
 static const char *zone_str =
 "test. 3600 IN SOA a. b. 1 1 1 1 1\n"
@@ -31,12 +32,19 @@ static const char *add1 =
 "c.test. IN TXT \"test\"\n"
 "d.test. IN TXT \"test\"\n";
 
-static const char *del1 =
+static const char *add_nsec3 =
 "test. 3600 IN SOA a. b. 3 1 1 1 1\n"
+"test. 0 IN NSEC3PARAM 1 0 10 DEADBEEF\n"
+"65QBS2TUD2SO2HMDIIFLAQVDHPL7EH56.test. IN NSEC3 1 0 10 DEADBEEF 7B4NC67ERA0FFG0QFHRRDCKH0OK3PESO TXT\n" // d.test.
+"7B4NC67ERA0FFG0QFHRRDCKH0OK3PESO.test. IN NSEC3 1 0 10 DEADBEEF RQPTAJDPMTSC4ADKMOMIA5K3QS1HHKE9 SOA NSEC3PARAM\n" // test.
+"RQPTAJDPMTSC4ADKMOMIA5K3QS1HHKE9.test. IN NSEC3 1 0 10 DEADBEEF 65QBS2TUD2SO2HMDIIFLAQVDHPL7EH56 TXT\n"; // c.test
+
+static const char *del1 =
+"test. 3600 IN SOA a. b. 4 1 1 1 1\n"
 "x.test. IN TXT \"test\"\n";
 
 static const char *del2 =
-"test. 3600 IN SOA a. b. 4 1 1 1 1\n"
+"test. 3600 IN SOA a. b. 5 1 1 1 1\n"
 "b.test. IN TXT \"test\"\n"
 "x.test. IN TXT \"test\"\n";
 
@@ -67,8 +75,28 @@ static void scanner_process(zs_scanner_t *scanner)
 	knot_rdataset_clear(&rr.rrs, NULL);
 }
 
+static bool nsec3_set_ok(zone_node_t *n, zone_contents_t *zone)
+{
+	if (n->nsec3_node == NULL) {
+		return false;
+	}
+	
+	knot_dname_t *nsec3_name = knot_create_nsec3_owner(n->owner,
+	                                                   zone->apex->owner,
+	                                                   &zone->nsec3_params);
+	assert(nsec3_name);
+	zone_node_t *found_nsec3;
+	zone_tree_get(zone->nsec3_nodes, nsec3_name, &found_nsec3);
+	assert(found_nsec3);
+	
+	printf("Found %s for %s, valid %s\n", knot_dname_to_str(n->nsec3_node->owner),
+	       knot_dname_to_str(n->owner), knot_dname_to_str(nsec3_name));
+	
+	return n->nsec3_node == found_nsec3 && n->nsec3_node->nsec3_node == n;
+}
+
 // Iterates through the zone and checks previous pointers
-static bool test_prev_for_tree(zone_tree_t *t)
+static bool test_prev_for_tree(zone_tree_t *t, zone_contents_t *zone)
 {
 	if (t == NULL) {
 		return true;
@@ -87,6 +115,15 @@ static bool test_prev_for_tree(zone_tree_t *t)
 		       knot_dname_to_str(curr->owner));
 		if (prev) {
 			if (curr->prev != prev) {
+				diag("Prev is not set properly");
+				hattrie_iter_free(itt);
+				return false;
+			}
+		}
+		
+		if (node_rrtype_exists(zone->apex, KNOT_RRTYPE_NSEC3PARAM)) {
+			if (!nsec3_set_ok(curr, zone)) {
+				diag("NSEC3 pointer not set properly");
 				hattrie_iter_free(itt);
 				return false;
 			}
@@ -102,7 +139,7 @@ static bool test_prev_for_tree(zone_tree_t *t)
 
 static bool test_prev(zone_contents_t *zone)
 {
-	return test_prev_for_tree(zone->nodes) && test_prev_for_tree(zone->nsec3_nodes);
+	return test_prev_for_tree(zone->nodes, zone) && test_prev_for_tree(zone->nsec3_nodes, zone);
 }
 
 static void add_and_update(zone_contents_t *zone, changeset_t *ch,
@@ -115,16 +152,12 @@ static void add_and_update(zone_contents_t *zone, changeset_t *ch,
 	ch->soa_from = node_create_rrset(zone->apex, KNOT_RRTYPE_SOA);
 	assert(ch->soa_to && ch->soa_from);
 	ret = apply_changeset_directly(zone, ch);
-	hattrie_build_index(zone->nodes);
-	if (zone->nsec3_nodes) {
-		hattrie_build_index(zone->nsec3_nodes);
-	}
 	assert(ret == KNOT_EOK);
 }
 
 int main(int argc, char *argv[])
 {
-	plan(5);
+	plan(7);
 	
 	// Fill zone
 	knot_dname_t *owner = knot_dname_from_str("test.");
@@ -138,14 +171,16 @@ int main(int argc, char *argv[])
 	assert(sc);
 	int ret = zs_scanner_parse(sc, zone_str, zone_str + strlen(zone_str), true);
 	assert(ret == 0);
-	// Adjust data
-	zone_contents_adjust_full(zone, NULL, NULL);
-	assert(test_prev(zone));
+	
+	// Test full adjust
+	zone_update_t up;
+	zone_update_init(&up, zone, NULL);
+	ret = zone_adjust(&up);
+	ok(ret == KNOT_EOK && test_prev(zone), "zone adjust: full adjust");
 	
 	// Init zone update structure
 	changeset_t ch;
 	changeset_init(&ch, owner);
-	zone_update_t up;
 	zone_update_init(&up, zone, &ch);
 	
 	// Add a record
@@ -183,13 +218,20 @@ int main(int argc, char *argv[])
 	changeset_init(&ch, owner);
 	
 	// Add and remove records
-	// Add record that will become last
 	zc.z = ch.add;
 	add_and_update(zone, &ch, sc, add1);
 	zc.z = ch.remove;
 	add_and_update(zone, &ch, sc, del2);
 	ret = zone_adjust(&up);
 	ok(ret == KNOT_EOK && test_prev(zone), "zone adjust: add and remove");
+	changeset_clear(&ch);
+	changeset_init(&ch, owner);
+	
+	// Add NSEC3 records
+	zc.z = ch.add;
+	add_and_update(zone, &ch, sc, add_nsec3);
+	ret = zone_adjust(&up);
+	ok(ret == KNOT_EOK && test_prev(zone), "zone adjust: add NSEC3");
 	changeset_clear(&ch);
 	changeset_init(&ch, owner);
 	

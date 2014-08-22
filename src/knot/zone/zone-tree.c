@@ -214,13 +214,7 @@ zone_node_t *zone_tree_get_prev(zone_tree_t *tree,
 	if (fval) {
 		return (zone_node_t *)(*fval);
 	} else {
-		/*
-		 * Previous should be the rightmost node.
-		 */
-		hattrie_iter_t *i = hattrie_iter_begin(tree, 1);
-		zone_node_t *leftmost = *(zone_node_t **)hattrie_iter_val(i);
-		hattrie_iter_free(i);
-		return leftmost->prev;
+		return (zone_node_t *)(*hattrie_find_rightmost_node(tree));
 	}
 }
 
