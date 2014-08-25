@@ -23,25 +23,29 @@
 
 typedef void (*adjust_callback_t)(zone_tree_t *, zone_contents_t *, zone_node_t *);
 
-static bool node_is_glue(const zone_node_t *n)
-{
-	return n->parent &&
-	       (n->parent->flags & NODE_FLAGS_DELEG || n->parent->flags & NODE_FLAGS_NONAUTH);
-}
-
 static bool node_is_deleg(const zone_node_t *n)
 {
 	return node_rrtype_exists(n, KNOT_RRTYPE_NS) &&
 	       !node_rrtype_exists(n, KNOT_RRTYPE_SOA);
 }
 
+static bool node_is_glue(const zone_node_t *n)
+{
+	/*
+	 * Go up in the tree and look for delegation points. If we reach the
+	 * top without seeing delegation point (parent is NULL), then
+	 * node is authoritative.
+	 */
+	return n->parent && (node_is_deleg(n->parent) || node_is_glue(n->parent));
+}
+
 // TODO do this while inserting, in new zone API
 static void adjust_node_flags(zone_node_t *n)
 {
-	if (node_is_glue(n)) {
-		n->flags = NODE_FLAGS_NONAUTH;
-	} else if (node_is_deleg(n)) {
+	if (node_is_deleg(n)) {
 		n->flags = NODE_FLAGS_DELEG;
+	} else if (node_is_glue(n)) {
+		n->flags = NODE_FLAGS_NONAUTH;
 	} else {
 		n->flags = NODE_FLAGS_AUTH;
 	}
@@ -53,18 +57,23 @@ static void adjust_node_flags(zone_node_t *n)
 
 static int adjust_node_nsec3(zone_contents_t *zone, zone_node_t *n)
 {
-	if (zone->nsec3_nodes) {
-		knot_dname_t *hash = knot_create_nsec3_owner(n->owner, zone->apex->owner,
-		                                             &zone->nsec3_params);
+	if (zone->nsec3_nodes && !node_rrtype_exists(n, KNOT_RRTYPE_NSEC3)) {
+		knot_dname_t *hash =
+			knot_create_nsec3_owner(n->owner,
+			                        zone->apex->owner,
+			                        node_rdataset(zone->apex,
+			                                      KNOT_RRTYPE_NSEC3PARAM));
 		if (hash == NULL) {
 			return KNOT_ERROR;
 		}
+		
 		knot_dname_to_lower(hash);
 		zone_tree_get(zone->nsec3_nodes, hash, &n->nsec3_node);
 		if (n->nsec3_node) {
 			// Set backward pointer (NSEC3 -> normal)
 			n->nsec3_node->nsec3_node = n;
 		}
+		knot_dname_free(&hash, NULL);
 	}
 	
 	return KNOT_EOK;

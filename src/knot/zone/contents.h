@@ -45,8 +45,6 @@ typedef struct zone_contents_t {
 
 	zone_tree_t *nodes;
 	zone_tree_t *nsec3_nodes;
-
-	knot_nsec3_params_t nsec3_params;
 } zone_contents_t;
 
 /*!
@@ -169,36 +167,6 @@ int zone_contents_adjust_pointers(zone_contents_t *contents);
 int zone_contents_adjust_full(zone_contents_t *contents,
                               zone_node_t **first_nsec3_node,
                               zone_node_t **last_nsec3_node);
-
-/*!
- * \brief Parses the NSEC3PARAM record stored in the zone.
- *
- * This function properly fills in the nsec3_params field of the zone structure
- * according to data stored in the NSEC3PARAM record. This is necessary to do
- * before any NSEC3 operations on the zone are requested, otherwise they will
- * fail (error KNOT_ENSEC3PAR).
- *
- * \note If there is no NSEC3PARAM record in the zone, this function clears
- *       the nsec3_params field of the zone structure (fills it with zeros).
- *
- * \param zone Zone to get the NSEC3PARAM record from.
- */
-int zone_contents_load_nsec3param(zone_contents_t *contents);
-
-/*!
- * \brief Returns the parsed NSEC3PARAM record of the zone.
- *
- * \note You must parse the NSEC3PARAM record prior to calling this function
- *       (zone_contents_load_nsec3param()).
- *
- * \param zone Zone to get the NSEC3PARAM record from.
- *
- * \return Parsed NSEC3PARAM from the zone or NULL if the zone does not use
- *         NSEC3 or the record was not parsed before.
- *
- * \see zone_contents_load_nsec3param()
- */
-const knot_nsec3_params_t *zone_contents_nsec3params(const zone_contents_t *contents);
 
 /*!
  * \brief Applies the given function to each regular node in the zone.

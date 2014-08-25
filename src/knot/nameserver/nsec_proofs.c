@@ -148,25 +148,9 @@ static int ns_put_nsec3_closest_encloser_proof(
 	assert(qname != NULL);
 	assert(resp != NULL);
 
-	// this function should be called only if NSEC3 is enabled in the zone
-	assert(zone_contents_nsec3params(zone) != NULL);
-
-	dbg_ns_verb("Adding closest encloser proof\n");
-
-	if (zone_contents_nsec3params(zone) == NULL) {
-dbg_ns_exec_verb(
-		char *name = knot_dname_to_str(zone->apex->owner);
-		dbg_ns_verb("No NSEC3PARAM found in zone %s.\n", name);
-		free(name);
-);
+	if (!node_rrtype_exists(zone->apex, KNOT_RRTYPE_NSEC3PARAM)) {
 		return KNOT_EOK;
 	}
-
-dbg_ns_exec_detail(
-	char *name = knot_dname_to_str((*closest_encloser)->owner);
-	dbg_ns_detail("Closest encloser: %s\n", name);
-	free(name);
-);
 
 	/*
 	 * 1) NSEC3 that matches closest provable encloser.

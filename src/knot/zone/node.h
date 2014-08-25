@@ -46,11 +46,7 @@ typedef struct zone_node {
 	/*! \brief Array with data of RRSets belonging to this node. */
 	struct rr_data *rrs;
 
-	/*!
-	 * \brief Previous node in canonical order. Only authoritative
-	 *        nodes or delegation points are referenced by this.
-	 */
-	struct zone_node *prev;
+	struct zone_node *prev; /*! Previous node in canonical order. */
 	struct zone_node *nsec3_node; /*! NSEC3 node corresponding to this node. */
 	uint32_t children; /*!< Count of children nodes in DNS hierarchy. */
 	uint16_t rrset_count; /*!< Number of RRSets stored in the node. */

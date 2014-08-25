@@ -32,7 +32,7 @@
 
 static int create_nsec3_rrset(knot_rrset_t *rrset,
                               knot_dname_t *dname,
-                              const knot_nsec3_params_t *,
+                              const knot_rdataset_t *,
                               const bitmap_t *,
                               const uint8_t *,
                               uint32_t);
@@ -191,14 +191,14 @@ static void free_nsec3_tree(zone_tree_t *nodes)
 /*!
  * \brief Get NSEC3 RDATA size.
  */
-static size_t nsec3_rdata_size(const knot_nsec3_params_t *params,
+static size_t nsec3_rdata_size(const knot_rdataset_t *params,
                                const bitmap_t *rr_types)
 {
 	assert(params);
 	assert(rr_types);
 
-	return 6 + params->salt_length
-	       + knot_nsec3_hash_length(params->algorithm)
+	return 6 + knot_nsec3param_salt_length(params, 0)
+	       + knot_nsec3_hash_length(knot_nsec3param_algorithm(params, 0))
 	       + bitmap_size(rr_types);
 }
 
@@ -207,7 +207,7 @@ static size_t nsec3_rdata_size(const knot_nsec3_params_t *params,
  *
  * \note Content of next hash field is not changed.
  */
-static void nsec3_fill_rdata(uint8_t *rdata, const knot_nsec3_params_t *params,
+static void nsec3_fill_rdata(uint8_t *rdata, const knot_rdataset_t *params,
                              const bitmap_t *rr_types,
                              const uint8_t *next_hashed, uint32_t ttl)
 {
@@ -215,23 +215,27 @@ static void nsec3_fill_rdata(uint8_t *rdata, const knot_nsec3_params_t *params,
 	assert(params);
 	assert(rr_types);
 
-	uint8_t hash_length = knot_nsec3_hash_length(params->algorithm);
+	const uint8_t algo = knot_nsec3param_algorithm(params, 0);
+	uint8_t hash_length = knot_nsec3_hash_length(algo);
 
-	*rdata = params->algorithm;                       // hash algorithm
+	*rdata = algo;                                    // hash algorithm
 	rdata += 1;
 	*rdata = 0;                                       // flags
 	rdata += 1;
-	knot_wire_write_u16(rdata, params->iterations);   // iterations
+	knot_wire_write_u16(rdata,
+	                    knot_nsec3param_iterations(params, 0));   // iterations
 	rdata += 2;
-	*rdata = params->salt_length;                     // salt length
+	const uint8_t salt_len = knot_nsec3param_salt_length(params, 0);
+	*rdata = salt_len;  // salt length
 	rdata += 1;
-	memcpy(rdata, params->salt, params->salt_length); // salt
-	rdata += params->salt_length;
+	memcpy(rdata, knot_nsec3param_salt(params, 0), salt_len); // salt
+	rdata += salt_len;
 	*rdata = hash_length;                             // hash length
 	rdata += 1;
-	/*memset(rdata, '\0', hash_len);*/                // hash (unknown)
 	if (next_hashed) {
-		memcpy(rdata, next_hashed, hash_length);
+		memcpy(rdata, next_hashed, hash_length);  // hash (unknown)
+	} else {
+		memset(rdata, '\0', hash_length);
 	}
 	rdata += hash_length;
 	bitmap_write(rr_types, rdata);                    // RR types bit map
@@ -250,7 +254,7 @@ static void nsec3_fill_rdata(uint8_t *rdata, const knot_nsec3_params_t *params,
  */
 static int create_nsec3_rrset(knot_rrset_t *rrset,
                               knot_dname_t *owner,
-                              const knot_nsec3_params_t *params,
+                              const knot_rdataset_t *params,
                               const bitmap_t *rr_types,
                               const uint8_t *next_hashed,
                               uint32_t ttl)
@@ -273,7 +277,7 @@ static int create_nsec3_rrset(knot_rrset_t *rrset,
  * \brief Create NSEC3 node.
  */
 static zone_node_t *create_nsec3_node(knot_dname_t *owner,
-                                      const knot_nsec3_params_t *nsec3_params,
+                                      const knot_rdataset_t *nsec3_params,
                                       zone_node_t *apex_node,
                                       const bitmap_t *rr_types,
                                       uint32_t ttl)
@@ -320,7 +324,7 @@ static zone_node_t *create_nsec3_node(knot_dname_t *owner,
  */
 static zone_node_t *create_nsec3_node_for_node(zone_node_t *node,
                                                zone_node_t *apex,
-                                               const knot_nsec3_params_t *params,
+                                               const knot_rdataset_t *params,
                                                uint32_t ttl)
 {
 	assert(node);
@@ -421,8 +425,8 @@ static int create_nsec3_nodes(const zone_contents_t *zone, uint32_t ttl,
 	assert(nsec3_nodes);
 	assert(chgset);
 
-	const knot_nsec3_params_t *params = &zone->nsec3_params;
-
+	const knot_rdataset_t *params = node_rdataset(zone->apex,
+	                                              KNOT_RRTYPE_NSEC3PARAM);
 	assert(params);
 
 	int result = KNOT_EOK;

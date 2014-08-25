@@ -143,7 +143,7 @@ inline static size_t knot_nsec3_hash_b32_length(uint8_t algorithm)
  *
  * \return Error code, KNOT_EOK if successful.
  */
-int knot_nsec3_hash(const knot_nsec3_params_t *params, const uint8_t *data,
+int knot_nsec3_hash(const knot_rdataset_t *params, const uint8_t *data,
                     size_t size, uint8_t **digest, size_t *digest_size);
 
 /*! @} */

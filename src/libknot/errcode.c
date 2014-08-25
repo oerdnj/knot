@@ -52,7 +52,6 @@ const error_table_t error_messages[] = {
 	{ KNOT_ESPACE,       "not enough space provided" },
 	{ KNOT_EMALF,        "malformed data" },
 	{ KNOT_ECRYPTO,      "error in crypto library" },
-	{ KNOT_ENSEC3PAR,    "missing or wrong NSEC3PARAM record" },
 	{ KNOT_ENSEC3CHAIN,  "missing or wrong NSEC3 chain in the zone" },
 	{ KNOT_EOUTOFZONE,   "name does not belong to the zone" },
 	{ KNOT_EHASH,        "error in hash table" },

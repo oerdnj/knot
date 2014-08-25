@@ -32,20 +32,34 @@ static const char *add1 =
 "c.test. IN TXT \"test\"\n"
 "d.test. IN TXT \"test\"\n";
 
-static const char *add_nsec3 =
+static const char *switch_nsec3 =
 "test. 3600 IN SOA a. b. 3 1 1 1 1\n"
 "test. 0 IN NSEC3PARAM 1 0 10 DEADBEEF\n"
 "65QBS2TUD2SO2HMDIIFLAQVDHPL7EH56.test. IN NSEC3 1 0 10 DEADBEEF 7B4NC67ERA0FFG0QFHRRDCKH0OK3PESO TXT\n" // d.test.
-"7B4NC67ERA0FFG0QFHRRDCKH0OK3PESO.test. IN NSEC3 1 0 10 DEADBEEF RQPTAJDPMTSC4ADKMOMIA5K3QS1HHKE9 SOA NSEC3PARAM\n" // test.
+"7B4NC67ERA0FFG0QFHRRDCKH0OK3PESO.test. IN NSEC3 1 0 10 DEADBEEF R8A5UNFOSHQNDVESUCUULJ8IHQ7N7ID7 SOA NSEC3PARAM\n" // test.
+"R8A5UNFOSHQNDVESUCUULJ8IHQ7N7ID7.test. IN NSEC3 1 0 10 DEADBEEF RQPTAJDPMTSC4ADKMOMIA5K3QS1HHKE9 TXT\n" // e.test
 "RQPTAJDPMTSC4ADKMOMIA5K3QS1HHKE9.test. IN NSEC3 1 0 10 DEADBEEF 65QBS2TUD2SO2HMDIIFLAQVDHPL7EH56 TXT\n"; // c.test
 
-static const char *del1 =
+static const char *add_nsec3=
 "test. 3600 IN SOA a. b. 4 1 1 1 1\n"
+"f.test. IN TXT \"test\"\n"
+"HAPB22MLBPNJTUSSFP5QNIBAQJHPP0VM.test. IN NSEC3 1 0 10 DEADBEEF R8A5UNFOSHQNDVESUCUULJ8IHQ7N7ID7 TXT\n";
+
+static const char *del1 =
+"test. 3600 IN SOA a. b. 5 1 1 1 1\n"
 "x.test. IN TXT \"test\"\n";
 
 static const char *del2 =
-"test. 3600 IN SOA a. b. 5 1 1 1 1\n"
+"test. 3600 IN SOA a. b. 6 1 1 1 1\n"
 "b.test. IN TXT \"test\"\n"
+"x.test. IN TXT \"test\"\n";
+
+static const char *flags_zone = 
+"test. 3600 IN SOA a. b. 7 1 1 1 1\n"
+"*.test. IN A 5.6.7.8\n"
+"ns.test. IN NS ns1\n"
+"sub.test. IN NS sub.whatever.\n"
+"glue.sub.test. IN A 1.2.3.4\n"
 "x.test. IN TXT \"test\"\n";
 
 struct adjust_params {
@@ -58,7 +72,10 @@ static void scanner_process(zs_scanner_t *scanner)
 	struct adjust_params *params = scanner->data;
 
 	knot_rrset_t rr;
-	knot_rrset_init(&rr, scanner->r_owner, scanner->r_type, scanner->r_class);
+	uint8_t owner[KNOT_DNAME_MAXLEN];
+	memcpy(owner, scanner->r_owner, knot_dname_size(scanner->r_owner));
+	knot_dname_to_lower(&owner);
+	knot_rrset_init(&rr, owner, scanner->r_type, scanner->r_class);
 	int ret = knot_rrset_add_rdata(&rr, scanner->r_data, scanner->r_data_length,
 	                               scanner->r_ttl, NULL);
 	assert(ret == KNOT_EOK);
@@ -78,21 +95,33 @@ static void scanner_process(zs_scanner_t *scanner)
 static bool nsec3_set_ok(zone_node_t *n, zone_contents_t *zone)
 {
 	if (n->nsec3_node == NULL) {
+		diag("NSEC3 node not set");
 		return false;
 	}
 	
-	knot_dname_t *nsec3_name = knot_create_nsec3_owner(n->owner,
-	                                                   zone->apex->owner,
-	                                                   &zone->nsec3_params);
+	knot_dname_t *nsec3_name =
+		knot_create_nsec3_owner(n->owner,
+		                        zone->apex->owner,
+		                        node_rdataset(zone->apex,
+		                                      KNOT_RRTYPE_NSEC3PARAM));
 	assert(nsec3_name);
-	zone_node_t *found_nsec3;
+	zone_node_t *found_nsec3 = NULL;
 	zone_tree_get(zone->nsec3_nodes, nsec3_name, &found_nsec3);
 	assert(found_nsec3);
 	
-	printf("Found %s for %s, valid %s\n", knot_dname_to_str(n->nsec3_node->owner),
-	       knot_dname_to_str(n->owner), knot_dname_to_str(nsec3_name));
+	diag("Found %s for %s, valid %s", knot_dname_to_str(n->nsec3_node->owner),
+	     knot_dname_to_str(n->owner), knot_dname_to_str(nsec3_name));
 	
 	return n->nsec3_node == found_nsec3 && n->nsec3_node->nsec3_node == n;
+}
+
+static bool flags_set_ok(zone_node_t *n, zone_contents_t *zone)
+{
+	uint8_t flags = 0;
+	if (knot_dname_is_wildcard(n->owner) && n->parent) {
+		flags |= NODE_FLAGS_WILDCARD_CHILD;
+	}
+	if (knot_
 }
 
 // Iterates through the zone and checks previous pointers
@@ -121,13 +150,21 @@ static bool test_prev_for_tree(zone_tree_t *t, zone_contents_t *zone)
 			}
 		}
 		
-		if (node_rrtype_exists(zone->apex, KNOT_RRTYPE_NSEC3PARAM)) {
+		if (node_rrtype_exists(zone->apex, KNOT_RRTYPE_NSEC3PARAM) &&
+		    !node_rrtype_exists(curr, KNOT_RRTYPE_NSEC3)) {
 			if (!nsec3_set_ok(curr, zone)) {
-				diag("NSEC3 pointer not set properly");
+				diag("NSEC3 pointer not set properly for %s",
+				     knot_dname_to_str(curr->owner));
 				hattrie_iter_free(itt);
 				return false;
 			}
 		}
+		
+		if (!flags_set_ok(curr, zone)) {
+			diag("Flags not properly set");
+			return false;
+		}
+		
 		hattrie_iter_next(itt);
 	}
 	
@@ -137,7 +174,7 @@ static bool test_prev_for_tree(zone_tree_t *t, zone_contents_t *zone)
 	return first->prev == curr;
 }
 
-static bool test_prev(zone_contents_t *zone)
+static bool test_zone(zone_contents_t *zone)
 {
 	return test_prev_for_tree(zone->nodes, zone) && test_prev_for_tree(zone->nsec3_nodes, zone);
 }
@@ -151,13 +188,20 @@ static void add_and_update(zone_contents_t *zone, changeset_t *ch,
 	knot_rrset_free(&ch->soa_from, NULL);
 	ch->soa_from = node_create_rrset(zone->apex, KNOT_RRTYPE_SOA);
 	assert(ch->soa_to && ch->soa_from);
+	// Insert
 	ret = apply_changeset_directly(zone, ch);
 	assert(ret == KNOT_EOK);
 }
 
+#define TEST_VALIDITY(zone, up, ch, msg) \
+	ret = zone_adjust(up); \
+	ok(ret == KNOT_EOK && test_zone(zone), msg); \
+	changeset_clear(ch); \
+	changeset_init(ch, zone->apex->owner);
+
 int main(int argc, char *argv[])
 {
-	plan(7);
+	plan(10);
 	
 	// Fill zone
 	knot_dname_t *owner = knot_dname_from_str("test.");
@@ -176,64 +220,71 @@ int main(int argc, char *argv[])
 	zone_update_t up;
 	zone_update_init(&up, zone, NULL);
 	ret = zone_adjust(&up);
-	ok(ret == KNOT_EOK && test_prev(zone), "zone adjust: full adjust");
+	ok(ret == KNOT_EOK && test_zone(zone), "zone adjust: full adjust");
 	
 	// Init zone update structure
 	changeset_t ch;
 	changeset_init(&ch, owner);
 	zone_update_init(&up, zone, &ch);
 	
+	// --- PREV pointer tests
+	
 	// Add a record
 	zc.z = ch.add;
 	params.ch = &ch;
 	add_and_update(zone, &ch, sc, add1);
-	
-	ret = zone_adjust(&up);
-	ok(ret == KNOT_EOK && test_prev(zone), "zone adjust: addition");
-	changeset_clear(&ch);
-	changeset_init(&ch, owner);
+	TEST_VALIDITY(zone, &up, &ch, "zone adjust: addition");
 	
 	// Remove a record
 	zc.z = ch.remove;
 	add_and_update(zone, &ch, sc, add1);
-	ret = zone_adjust(&up);
-	ok(ret == KNOT_EOK && test_prev(zone), "zone adjust: deletion");
-	changeset_clear(&ch);
-	changeset_init(&ch, owner);
+	TEST_VALIDITY(zone, &up, &ch, "zone adjust: deletion");
 	
 	// Remove the last record
 	zc.z = ch.remove;
 	add_and_update(zone, &ch, sc, del1);
-	ret = zone_adjust(&up);
-	ok(ret == KNOT_EOK && test_prev(zone), "zone adjust: delete last");
-	changeset_clear(&ch);
-	changeset_init(&ch, owner);
+	TEST_VALIDITY(zone, &up, &ch, "zone adjust: delete last");
 	
 	// Add record that will become last
 	zc.z = ch.add;
 	add_and_update(zone, &ch, sc, del1);
-	ret = zone_adjust(&up);
-	ok(ret == KNOT_EOK && test_prev(zone), "zone adjust: add last");
-	changeset_clear(&ch);
-	changeset_init(&ch, owner);
+	TEST_VALIDITY(zone, &up, &ch, "zone adjust: add last");
 	
 	// Add and remove records
 	zc.z = ch.add;
 	add_and_update(zone, &ch, sc, add1);
 	zc.z = ch.remove;
 	add_and_update(zone, &ch, sc, del2);
-	ret = zone_adjust(&up);
-	ok(ret == KNOT_EOK && test_prev(zone), "zone adjust: add and remove");
-	changeset_clear(&ch);
-	changeset_init(&ch, owner);
+	TEST_VALIDITY(zone, &up, &ch, "zone adjust: add and remove");
 	
-	// Add NSEC3 records
+	// --- NSEC3 tests
+	
+	// Add all NSEC3 records
+	zc.z = ch.add;
+	add_and_update(zone, &ch, sc, switch_nsec3);
+	TEST_VALIDITY(zone, &up, &ch, "zone adjust: switch NSEC3");
+	
+	// Add new record and its NSEC3
 	zc.z = ch.add;
 	add_and_update(zone, &ch, sc, add_nsec3);
-	ret = zone_adjust(&up);
-	ok(ret == KNOT_EOK && test_prev(zone), "zone adjust: add NSEC3");
-	changeset_clear(&ch);
-	changeset_init(&ch, owner);
+	TEST_VALIDITY(zone, &up, &ch, "zone adjust: add NSEC3");
+	
+	// Remove previously added NSEC3
+	zc.z = ch.remove;
+	add_and_update(zone, &ch, sc, add_nsec3);
+	TEST_VALIDITY(zone, &up, &ch, "zone adjust: remove NSEC3");
+	
+	// --- FLAGS tests
+	
+	zone_contents_deep_free(&zone);
+	// Reset zone
+	zone = zone_contents_new(owner);
+	assert(zone);
+	zc.z = zone;
+	params.ch = NULL;
+	ret = zs_scanner_parse(sc, flags_zone, flags_zone + strlen(flags_zone), true);
+	assert(ret == 0);
+	TEST_VALIDITY(zone, &up, &ch, "zone adjust: flags");
 	
 	return 0;
 }

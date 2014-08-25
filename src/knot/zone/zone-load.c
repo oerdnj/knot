@@ -69,14 +69,6 @@ int zone_load_check(zone_contents_t *contents, conf_zone_t *zone_config)
 		}
 	}
 
-	/* Check NSEC3PARAM state if present. */
-	int result = zone_contents_load_nsec3param(contents);
-	if (result != KNOT_EOK) {
-		log_zone_error(zone_name, "NSEC3 signed zone has invalid or no "
-		               "NSEC3PARAM record");
-		return result;
-	}
-
 	return KNOT_EOK;
 }
 

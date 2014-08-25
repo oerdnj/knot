@@ -44,47 +44,49 @@ static void usage(FILE *stream)
 /*!
  * \brief Parse NSEC3 parameters and fill structure with NSEC3 parameters.
  */
-static bool parse_nsec3_params(knot_nsec3_params_t *params, const char *salt,
-			       const char *algorithm, const char *iterations)
+static bool parse_nsec3_params(knot_rdataset_t *params, const char *salt,
+                               const char *algorithm, const char *iterations)
 {
-	int result;
-
-	result = knot_str2uint8t(algorithm, &params->algorithm);
-	if (result != KNOT_EOK) {
-		fprintf(stderr, "Invalid algorithm number.\n");
-		return false;
-	}
-
-	result = knot_str2uint16t(iterations, &params->iterations);
-	if (result != KNOT_EOK) {
-		fprintf(stderr, "Invalid iteration count: %s\n",
-		        knot_strerror(result));
-		return false;
-	}
-
-	size_t salt_length = 0;
-	uint8_t *salt_data = NULL;
-
-	if (salt[0] != '\0') {
-		result = hex_decode(salt, &salt_data, &salt_length);
-		if (result != KNOT_EOK) {
-			fprintf(stderr, "Invalid salt: %s\n",
-				knot_strerror(result));
-			return false;
-		}
-	}
-
-	if (salt_length > UINT8_MAX) {
-		fprintf(stderr, "Invalid salt: Maximal length is %d bytes.\n",
-		        UINT8_MAX);
-		free(salt_data);
-		return false;
-	}
-
-	params->salt = salt_data;
-	params->salt_length = (uint8_t)salt_length;
-
 	return true;
+#warning redo
+//	int result;
+
+//	result = knot_str2uint8t(algorithm, &params->algorithm);
+//	if (result != KNOT_EOK) {
+//		fprintf(stderr, "Invalid algorithm number.\n");
+//		return false;
+//	}
+
+//	result = knot_str2uint16t(iterations, &params->iterations);
+//	if (result != KNOT_EOK) {
+//		fprintf(stderr, "Invalid iteration count: %s\n",
+//		        knot_strerror(result));
+//		return false;
+//	}
+
+//	size_t salt_length = 0;
+//	uint8_t *salt_data = NULL;
+
+//	if (salt[0] != '\0') {
+//		result = hex_decode(salt, &salt_data, &salt_length);
+//		if (result != KNOT_EOK) {
+//			fprintf(stderr, "Invalid salt: %s\n",
+//				knot_strerror(result));
+//			return false;
+//		}
+//	}
+
+//	if (salt_length > UINT8_MAX) {
+//		fprintf(stderr, "Invalid salt: Maximal length is %d bytes.\n",
+//		        UINT8_MAX);
+//		free(salt_data);
+//		return false;
+//	}
+
+//	params->salt = salt_data;
+//	params->salt_length = (uint8_t)salt_length;
+
+//	return true;
 }
 
 /*!
@@ -132,7 +134,7 @@ int main(int argc, char *argv[])
 	atexit(knot_crypto_cleanup);
 
 	int exit_code = 1;
-	knot_nsec3_params_t nsec3_params = { 0 };
+	knot_rdataset_t nsec3_params;
 	knot_dname_t *dname = NULL;
 	uint8_t *digest = NULL;
 	size_t digest_size = 0;
@@ -178,11 +180,10 @@ int main(int argc, char *argv[])
 	exit_code = 0;
 
 	printf("%.*s (salt=%s, hash=%d, iterations=%d)\n", b32_length,
-	       b32_digest, argv[1], nsec3_params.algorithm,
-	       nsec3_params.iterations);
+	       b32_digest, argv[1], knot_nsec3param_algorithm(&nsec3_params, 0),
+	       knot_nsec3param_iterations(&nsec3_params, 0));
 
 fail:
-	knot_nsec3param_free(&nsec3_params);
 	knot_dname_free(&dname, NULL);
 	free(digest);
 	free(b32_digest);

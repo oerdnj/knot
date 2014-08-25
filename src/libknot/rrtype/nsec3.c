@@ -98,17 +98,19 @@ static int nsec3_sha1(const uint8_t *salt, uint8_t salt_length,
 /*!
  * \brief Compute NSEC3 hash for given data.
  */
-int knot_nsec3_hash(const knot_nsec3_params_t *params, const uint8_t *data,
+int knot_nsec3_hash(const knot_rdataset_t *params, const uint8_t *data,
                     size_t data_size, uint8_t **digest, size_t *digest_size)
 {
 	if (!params || !data || !digest || !digest_size) {
 		return KNOT_EINVAL;
 	}
 
-	if (params->algorithm != 1) {
+	if (knot_nsec3param_algorithm(params, 0) != 1) {
 		return KNOT_DNSSEC_ENOTSUP;
 	}
 
-	return nsec3_sha1(params->salt, params->salt_length, params->iterations,
+	return nsec3_sha1(knot_nsec3param_salt(params, 0),
+	                  knot_nsec3param_salt_length(params, 0),
+	                  knot_nsec3param_iterations(params, 0),
 	                  data, data_size, digest, digest_size);
 }

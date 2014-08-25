@@ -244,7 +244,6 @@ src/libknot/rrtype/dnskey.h
 src/libknot/rrtype/nsec.h
 src/libknot/rrtype/nsec3.c
 src/libknot/rrtype/nsec3.h
-src/libknot/rrtype/nsec3param.c
 src/libknot/rrtype/nsec3param.h
 src/libknot/rrtype/opt.c
 src/libknot/rrtype/opt.h

@@ -119,23 +119,24 @@ static int zone_contents_nsec3_name(const zone_contents_t *zone,
                                          const knot_dname_t *name,
                                          knot_dname_t **nsec3_name)
 {
-	assert(nsec3_name != NULL);
-	*nsec3_name = NULL;
+	return 0;
+//	assert(nsec3_name != NULL);
+//	*nsec3_name = NULL;
 
-	const knot_nsec3_params_t *nsec3_params =
-		zone_contents_nsec3params(zone);
+//	const knot_nsec3_params_t *nsec3_params =
+//		zone_contents_nsec3params(zone);
 
-	if (nsec3_params == NULL) {
-		return KNOT_ENSEC3PAR;
-	}
+//	if (nsec3_params == NULL) {
+//		return KNOT_ENSEC3PAR;
+//	}
 
-	*nsec3_name = knot_create_nsec3_owner(name, zone->apex->owner,
-	                                      nsec3_params);
-	if (*nsec3_name == NULL) {
-		return KNOT_ERROR;
-	}
+//	*nsec3_name = knot_create_nsec3_owner(name, zone->apex->owner,
+//	                                      nsec3_params);
+//	if (*nsec3_name == NULL) {
+//		return KNOT_ERROR;
+//	}
 
-	return KNOT_EOK;
+//	return KNOT_EOK;
 }
 
 /*! \brief Link pointers to additional nodes for this RRSet. */
@@ -224,25 +225,27 @@ static int adjust_pointers(zone_node_t **tnode, void *data)
 
 static int adjust_nsec3_pointers(zone_node_t **tnode, void *data)
 {
-	assert(data != NULL);
-	assert(tnode != NULL);
-	zone_adjust_arg_t *args = (zone_adjust_arg_t *)data;
-	zone_node_t *node = *tnode;
-	// Connect to NSEC3 node (only if NSEC3 tree is not empty)
-	zone_node_t *nsec3 = NULL;
-	knot_dname_t *nsec3_name = NULL;
-	int ret = zone_contents_nsec3_name(args->zone, node->owner, &nsec3_name);
-	if (ret == KNOT_EOK) {
-		assert(nsec3_name);
-		zone_tree_get(args->zone->nsec3_nodes, nsec3_name, &nsec3);
-		node->nsec3_node = nsec3;
-	} else if (ret == KNOT_ENSEC3PAR) {
-		node->nsec3_node = NULL;
-		ret = KNOT_EOK;
-	}
+	return 0;
+	
+//	assert(data != NULL);
+//	assert(tnode != NULL);
+//	zone_adjust_arg_t *args = (zone_adjust_arg_t *)data;
+//	zone_node_t *node = *tnode;
+//	// Connect to NSEC3 node (only if NSEC3 tree is not empty)
+//	zone_node_t *nsec3 = NULL;
+//	knot_dname_t *nsec3_name = NULL;
+//	int ret = zone_contents_nsec3_name(args->zone, node->owner, &nsec3_name);
+//	if (ret == KNOT_EOK) {
+//		assert(nsec3_name);
+//		zone_tree_get(args->zone->nsec3_nodes, nsec3_name, &nsec3);
+//		node->nsec3_node = nsec3;
+//	} else if (ret == KNOT_ENSEC3PAR) {
+//		node->nsec3_node = NULL;
+//		ret = KNOT_EOK;
+//	}
 
-	knot_dname_free(&nsec3_name, NULL);
-	return ret;
+//	knot_dname_free(&nsec3_name, NULL);
+//	return ret;
 }
 
 /*!
@@ -369,30 +372,6 @@ static int zone_contents_find_in_tree(zone_tree_t *tree,
 }
 
 /*----------------------------------------------------------------------------*/
-
-static int knot_zc_nsec3_parameters_match(const knot_rdataset_t *rrs,
-                                          const knot_nsec3_params_t *params,
-                                          size_t rdata_pos)
-{
-	assert(rrs != NULL && params != NULL);
-
-	dbg_zone_detail("RDATA algo: %u, iterations: %u, salt length: %u, salt:"
-			" %.*s\n",
-			knot_nsec3_algorithm(rrs, rdata_pos),
-			knot_nsec3_iterations(rrs, rdata_pos),
-			knot_nsec3_salt_length(rrs, rdata_pos),
-			knot_nsec3_salt_length(rrs, rdata_pos),
-			knot_nsec3_salt(rrs, rdata_pos));
-	dbg_zone_detail("NSEC3PARAM algo: %u, iterations: %u, salt length: %u, "
-			"salt: %.*s\n",  params->algorithm, params->iterations,
-			params->salt_length, params->salt_length, params->salt);
-
-	return (knot_nsec3_algorithm(rrs, rdata_pos) == params->algorithm
-		&& knot_nsec3_iterations(rrs, rdata_pos) == params->iterations
-		&& knot_nsec3_salt_length(rrs, rdata_pos) == params->salt_length
-		&& memcmp(knot_nsec3_salt(rrs, rdata_pos), params->salt,
-		          params->salt_length) == 0);
-}
 
 /*----------------------------------------------------------------------------*/
 /* API functions                                                              */
@@ -946,32 +925,34 @@ dbg_zone_exec_detail(
 	const zone_node_t *original_prev = *nsec3_previous;
 
 	int match = 0;
+	
+#warning get rid of this
 
-	while (nsec3_rrs && !match) {
-		for (uint16_t i = 0;
-		     i < nsec3_rrs->rr_count && !match;
-		     i++) {
-			if (knot_zc_nsec3_parameters_match(nsec3_rrs,
-			                                   &zone->nsec3_params,
-			                                   i)) {
-				/* Matching NSEC3PARAM match at position nr.: i. */
-				match = 1;
-			}
-		}
-
-		if (match) {
-			break;
-		}
-
-		/* This RRSET was not a match, try the one from previous node. */
-		*nsec3_previous = (*nsec3_previous)->prev;
-		nsec3_rrs = node_rdataset(*nsec3_previous, KNOT_RRTYPE_NSEC3);
-		if (*nsec3_previous == original_prev || nsec3_rrs == NULL) {
-			// cycle
-			*nsec3_previous = NULL;
-			break;
-		}
-	}
+//	while (nsec3_rrs && !match) {
+//		for (uint16_t i = 0;
+//		     i < nsec3_rrs->rr_count && !match;
+//		     i++) {
+//			if (knot_zc_nsec3_parameters_match(nsec3_rrs,
+//			                                   &zone->nsec3_params,
+//			                                   i)) {
+//				/* Matching NSEC3PARAM match at position nr.: i. */
+//				match = 1;
+//			}
+//		}
+		
+//		if (match) {
+//			break;
+//		}
+		
+//		/* This RRSET was not a match, try the one from previous node. */
+//		*nsec3_previous = (*nsec3_previous)->prev;
+//		nsec3_rrs = node_rdataset(*nsec3_previous, KNOT_RRTYPE_NSEC3);
+//		if (*nsec3_previous == original_prev || nsec3_rrs == NULL) {
+//			// cycle
+//			*nsec3_previous = NULL;
+//			break;
+//		}
+//	}
 
 	return (exact_match)
 	       ? ZONE_NAME_FOUND
@@ -1036,19 +1017,19 @@ static int zone_contents_adjust_nsec3_tree(zone_contents_t *contents)
 
 int zone_contents_adjust_pointers(zone_contents_t *contents)
 {
-	int ret = zone_contents_load_nsec3param(contents);
-	if (ret != KNOT_EOK) {
-		log_zone_error(contents->apex->owner,
-			       "failed to load NSEC3 parameters (%s)",
-			       knot_strerror(ret));
-		return ret;
-	}
+//	int ret = zone_contents_load_nsec3param(contents);
+//	if (ret != KNOT_EOK) {
+//		log_zone_error(contents->apex->owner,
+//			       "failed to load NSEC3 parameters (%s)",
+//			       knot_strerror(ret));
+//		return ret;
+//	}
 
 	// adjusting parameters
 	zone_adjust_arg_t adjust_arg = { .first_node = NULL,
 	                                 .previous_node = NULL,
 	                                 .zone = contents };
-	ret =  zone_contents_adjust_nodes(contents->nodes, &adjust_arg,
+	int ret =  zone_contents_adjust_nodes(contents->nodes, &adjust_arg,
 	                                       adjust_pointers);
 	if (ret != KNOT_EOK) {
 		return ret;
@@ -1073,13 +1054,13 @@ int zone_contents_adjust_full(zone_contents_t *zone,
 		return KNOT_EINVAL;
 	}
 
-	int result = zone_contents_load_nsec3param(zone);
-	if (result != KNOT_EOK) {
-		log_zone_error(zone->apex->owner,
-			       "failed to load NSEC3 parameters (%s)",
-			       knot_strerror(result));
-		return result;
-	}
+//	int result = zone_contents_load_nsec3param(zone);
+//	if (result != KNOT_EOK) {
+//		log_zone_error(zone->apex->owner,
+//			       "failed to load NSEC3 parameters (%s)",
+//			       knot_strerror(result));
+//		return result;
+//	}
 
 	// adjusting parameters
 
@@ -1088,8 +1069,8 @@ int zone_contents_adjust_full(zone_contents_t *zone,
 
 	// adjust NSEC3 nodes
 
-	result = zone_contents_adjust_nodes(zone->nsec3_nodes, &adjust_arg,
-	                                 zone_contents_adjust_nsec3_node);
+	int result = zone_contents_adjust_nodes(zone->nsec3_nodes, &adjust_arg,
+	                                        zone_contents_adjust_nsec3_node);
 	if (result != KNOT_EOK) {
 		return result;
 	}
@@ -1120,44 +1101,6 @@ int zone_contents_adjust_full(zone_contents_t *zone,
 
 	return zone_contents_adjust_nodes(zone->nodes, &adjust_arg,
 	                                       adjust_additional);
-}
-
-/*----------------------------------------------------------------------------*/
-
-int zone_contents_load_nsec3param(zone_contents_t *zone)
-{
-	if (zone == NULL || zone->apex == NULL) {
-		return KNOT_EINVAL;
-	}
-
-	const knot_rdataset_t *rrs = node_rdataset(zone->apex, KNOT_RRTYPE_NSEC3PARAM);
-	if (rrs!= NULL) {
-		int r = knot_nsec3param_from_wire(&zone->nsec3_params, rrs);
-		if (r != KNOT_EOK) {
-			dbg_zone("Failed to load NSEC3PARAM (%s).\n",
-			         knot_strerror(r));
-			return r;
-		}
-	} else {
-		memset(&zone->nsec3_params, 0, sizeof(knot_nsec3_params_t));
-	}
-
-	return KNOT_EOK;
-}
-
-/*----------------------------------------------------------------------------*/
-
-const knot_nsec3_params_t *zone_contents_nsec3params(const zone_contents_t *zone)
-{
-	if (zone == NULL) {
-		return NULL;
-	}
-
-	if (knot_is_nsec3_enabled(zone)) {
-		return &zone->nsec3_params;
-	} else {
-		return NULL;
-	}
 }
 
 /*----------------------------------------------------------------------------*/
@@ -1248,8 +1191,6 @@ void zone_contents_free(zone_contents_t **contents)
 	zone_tree_free(&(*contents)->nodes);
 	dbg_zone("Destroying NSEC3 zone tree.\n");
 	zone_tree_free(&(*contents)->nsec3_nodes);
-
-	knot_nsec3param_free(&(*contents)->nsec3_params);
 
 	free(*contents);
 	*contents = NULL;

@@ -74,11 +74,7 @@ static int delete_nsec3_chain(const zone_contents_t *zone,
  */
 bool knot_is_nsec3_enabled(const zone_contents_t *zone)
 {
-	if (!zone) {
-		return false;
-	}
-
-	return zone->nsec3_params.algorithm != 0;
+	return node_rrtype_exists(zone->apex, KNOT_RRTYPE_NSEC3PARAM);
 }
 
 /*!
@@ -185,7 +181,7 @@ static int mark_removed_nsec3(changeset_t *out_ch,
  */
 knot_dname_t *knot_create_nsec3_owner(const knot_dname_t *owner,
                                       const knot_dname_t *zone_apex,
-                                      const knot_nsec3_params_t *params)
+                                      const knot_rdataset_t *params)
 {
 	if (owner == NULL || zone_apex == NULL || params == NULL) {
 		return NULL;

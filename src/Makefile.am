@@ -180,7 +180,6 @@ libknot_la_SOURCES =				\
 	libknot/rrtype/nsec3.c			\
 	libknot/rrtype/nsec3.h			\
 	libknot/rrtype/nsec3param.h		\
-	libknot/rrtype/nsec3param.c		\
 	libknot/rrtype/nsec.h			\
 	libknot/rrtype/opt.c			\
 	libknot/rrtype/opt.h			\
