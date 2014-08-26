@@ -124,7 +124,7 @@ static void scanner_process(zs_scanner_t *scanner)
 	knot_rdataset_clear(&rr.rrs, NULL);
 }
 
-static bool nsec3_set_ok(zone_node_t *n, zone_contents_t *zone)
+static bool nsec3_set_ok(const zone_node_t *n, const zone_contents_t *zone)
 {
 	if (n->nsec3_node == NULL) {
 		diag("NSEC3 node not set");
@@ -332,6 +332,9 @@ int main(int argc, char *argv[])
 	add_and_update(zone, &ch, sc, remove_ns);
 	TEST_VALIDITY(zone, &up, &ch, "zone adjust: flags add apply");
 	ok(test_flags(zone, ZONE_FLAGS_ADD, FLAGS_ZONE_SIZE), "zone adjust: flags add set");
+	
+	// --- Additional pointers tests
+	
 	
 	return 0;
 }

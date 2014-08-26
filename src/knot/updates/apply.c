@@ -21,7 +21,9 @@
 #include "knot/zone/zone.h"
 #include "libknot/common.h"
 #include "knot/updates/changesets.h"
+#include "knot/updates/zone-update.h"
 #include "knot/zone/zonefile.h"
+#include "knot/zone/adjust.h"
 #include "common-knot/lists.h"
 #include "libknot/rrtype/soa.h"
 #include "libknot/rrtype/rrsig.h"
@@ -411,22 +413,6 @@ static int prepare_zone_copy(zone_contents_t *old_contents,
 	return KNOT_EOK;
 }
 
-/*! \brief Removes empty nodes from updated zone a does zone adjusting. */
-static int finalize_updated_zone(zone_contents_t *contents_copy,
-                                 bool set_nsec3_names)
-{
-	return KNOT_EOK;
-	if (contents_copy == NULL) {
-		return KNOT_EINVAL;
-	}
-
-	if (set_nsec3_names) {
-		return zone_contents_adjust_full(contents_copy, NULL, NULL);
-	} else {
-		return zone_contents_adjust_pointers(contents_copy);
-	}
-}
-
 /* ------------------------------- API -------------------------------------- */
 
 int apply_changesets(zone_t *zone, list_t *chsets, zone_contents_t **new_contents)
@@ -458,17 +444,19 @@ int apply_changesets(zone_t *zone, list_t *chsets, zone_contents_t **new_content
 			update_free_zone(&contents_copy);
 			return ret;
 		}
+		
+#warning TODO: purge multiple updates, then remove this
+		zone_update_t up;
+		zone_update_init(&up, contents_copy, set);
+		ret = zone_adjust(&up);
+		if (ret != KNOT_EOK) {
+			updates_rollback(chsets);
+			update_free_zone(&contents_copy);
+			return ret;
+		}
 	}
 
 	assert(contents_copy->apex != NULL);
-
-	ret = finalize_updated_zone(contents_copy, true);
-	if (ret != KNOT_EOK) {
-		updates_rollback(chsets);
-		update_free_zone(&contents_copy);
-		return ret;
-	}
-
 	*new_contents = contents_copy;
 
 	return KNOT_EOK;
@@ -499,7 +487,9 @@ int apply_changeset(zone_t *zone, changeset_t *change, zone_contents_t **new_con
 		return ret;
 	}
 	
-	ret = finalize_updated_zone(contents_copy, true);
+	zone_update_t up;
+	zone_update_init(&up, contents_copy, change);
+	ret = zone_adjust(&up);
 	if (ret != KNOT_EOK) {
 		update_rollback(change);
 		update_free_zone(&contents_copy);
@@ -525,14 +515,17 @@ int apply_changesets_directly(zone_contents_t *contents, list_t *chsets)
 			updates_cleanup(chsets);
 			return ret;
 		}
+#warning TODO: to be purged
+		zone_update_t up;
+		zone_update_init(&up, contents, set);
+		ret = zone_adjust(&up);
+		if (ret != KNOT_EOK) {
+			updates_cleanup(chsets);
+			return ret;
+		}
 	}
 
-	int ret = finalize_updated_zone(contents, true);
-	if (ret != KNOT_EOK) {
-		updates_cleanup(chsets);
-	}
-	
-	return ret;
+	return KNOT_EOK;
 }
 
 int apply_changeset_directly(zone_contents_t *contents, changeset_t *ch)
@@ -548,7 +541,9 @@ int apply_changeset_directly(zone_contents_t *contents, changeset_t *ch)
 		return ret;
 	}
 	
-	ret = finalize_updated_zone(contents, true);
+	zone_update_t up;
+	zone_update_init(&up, contents, ch);
+	ret = zone_adjust(&up);
 	if (ret != KNOT_EOK) {
 		update_cleanup(ch);
 		return ret;

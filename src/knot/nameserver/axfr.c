@@ -20,6 +20,7 @@
 #include "knot/nameserver/process_answer.h"
 #include "knot/updates/apply.h"
 #include "knot/updates/zone-update.h"
+#include "knot/zone/adjust.h"
 #include "knot/zone/zonefile.h"
 #include "common/debug.h"
 #include "libknot/descriptor.h"
