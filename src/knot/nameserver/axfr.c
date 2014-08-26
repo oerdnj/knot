@@ -19,6 +19,7 @@
 #include "knot/nameserver/process_query.h"
 #include "knot/nameserver/process_answer.h"
 #include "knot/updates/apply.h"
+#include "knot/updates/zone-update.h"
 #include "knot/zone/zonefile.h"
 #include "common/debug.h"
 #include "libknot/descriptor.h"
@@ -317,7 +318,9 @@ static int axfr_answer_finalize(struct answer_data *adata)
 	 * marked authoritative / delegation point.
 	 */
 	struct xfr_proc *proc = adata->ext;
-	int rc = zone_contents_adjust_full(proc->contents, NULL, NULL);
+	zone_update_t up;
+	zone_update_init(&up, proc->contents, NULL);
+	int rc = zone_adjust(&up);
 	if (rc != KNOT_EOK) {
 		return rc;
 	}

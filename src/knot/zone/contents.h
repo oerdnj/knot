@@ -149,26 +149,6 @@ const zone_node_t *zone_contents_find_wildcard_child(const zone_contents_t *cont
                                                      const zone_node_t *parent);
 
 /*!
- * \brief Sets parent and previous pointers and node flags. (cheap operation)
- *        For both normal and NSEC3 tree
- */
-int zone_contents_adjust_pointers(zone_contents_t *contents);
-
-/*!
- * \brief Sets parent and previous pointers, sets node flags and NSEC3 links.
- *        This has to be called before the zone can be served.
- *
- * \param first_nsec3_node First node in NSEC3 tree - needed in sem. checks.
- *        Will not be saved if set to NULL.
- * \param last_nsec3_node Last node in NSEC3 tree - needed in sem. checks.
- *        Will not be saved if set to NULL.
- * \param zone Zone to adjust domain names in.
- */
-int zone_contents_adjust_full(zone_contents_t *contents,
-                              zone_node_t **first_nsec3_node,
-                              zone_node_t **last_nsec3_node);
-
-/*!
  * \brief Applies the given function to each regular node in the zone.
  *
  * This function uses in-order depth-first forward traversal, i.e. the function

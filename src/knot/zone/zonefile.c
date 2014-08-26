@@ -37,6 +37,7 @@
 #include "knot/zone/zonefile.h"
 #include "libknot/rdata.h"
 #include "knot/zone/zone-dump.h"
+#include "knot/updates/zone-update.h"
 
 #define ERROR(zone, fmt...) log_zone_error(zone, "zone loader, " fmt)
 #define WARNING(zone, fmt...) log_zone_warning(zone, "zone loader, " fmt)
@@ -274,11 +275,10 @@ zone_contents_t *zonefile_load(zloader_t *loader)
 		goto fail;
 	}
 
-	zone_node_t *first_nsec3_node = NULL;
-	zone_node_t *last_nsec3_node = NULL;
+	zone_update_t up;
+	zone_update_init(&up, zc->z, NULL);
 
-	int kret = zone_contents_adjust_full(zc->z,
-	                                     &first_nsec3_node, &last_nsec3_node);
+	int kret = zone_adjust(&up);
 	if (kret != KNOT_EOK) {
 		ERROR(zname, "failed to finalize zone contents (%s)",
 		      knot_strerror(kret));
@@ -301,8 +301,7 @@ zone_contents_t *zonefile_load(zloader_t *loader)
 		err_handler_t err_handler;
 		err_handler_init(&err_handler);
 		zone_do_sem_checks(zc->z, check_level,
-		                   &err_handler, first_nsec3_node,
-		                   last_nsec3_node);
+		                   &err_handler, NULL, NULL);
 		INFO(zname, "semantic check, completed");
 	}
 
