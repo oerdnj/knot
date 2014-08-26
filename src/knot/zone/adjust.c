@@ -39,7 +39,7 @@ static bool node_is_glue(const zone_node_t *n)
 	return n->parent && (node_is_deleg(n->parent) || node_is_glue(n->parent));
 }
 
-// TODO do this while inserting, in new zone API
+#warning TODO: purge flags, use function like those above instead
 static void adjust_node_flags(zone_node_t *n)
 {
 	if (node_is_deleg(n)) {

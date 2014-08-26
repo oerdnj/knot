@@ -57,7 +57,7 @@ static const char *del2 =
 static const char *flags_zone = 
 "test. 3600 IN SOA a. b. 1 1 1 1 1\n"
 "*.test. IN A 5.6.7.8\n"
-"sub.test. IN NS sub.whatever.\n"
+"sub.test. IN NS glue.sub.test.\n"
 "glue.sub.test. IN A 1.2.3.4\n"
 "x.test. IN TXT \"test\"\n"
 "below.x.test. IN A 1.2.3.4\n";
@@ -73,26 +73,37 @@ static const char *remove_ns =
 
 struct zone_flags {
 	uint8_t *name;
-	uint8_t flags;
+	union {
+		uint8_t flags;
+		uint8_t *deleg[16];
+	} data;
 };
 
 #define FLAGS_ZONE_SIZE 6
 
 struct zone_flags ZONE_FLAGS_INIT[FLAGS_ZONE_SIZE] = {
-{(uint8_t *)"\4test\0", NODE_FLAGS_WILDCARD_CHILD},
-{(uint8_t *)"\1*\4test\0", NODE_FLAGS_AUTH },
-{(uint8_t *)"\3sub\4test\0", NODE_FLAGS_DELEG},
-{(uint8_t *)"\4glue\3sub\4test\0", NODE_FLAGS_NONAUTH},
-{(uint8_t *)"\1x\4test\0", NODE_FLAGS_AUTH},
-{(uint8_t *)"\5below\1x\4test\0", NODE_FLAGS_AUTH}};
+{(uint8_t *)"\4test\0", .data.flags = NODE_FLAGS_WILDCARD_CHILD},
+{(uint8_t *)"\1*\4test\0", .data.flags = NODE_FLAGS_AUTH},
+{(uint8_t *)"\3sub\4test\0", .data.flags = NODE_FLAGS_DELEG},
+{(uint8_t *)"\4glue\3sub\4test\0", .data.flags = NODE_FLAGS_NONAUTH},
+{(uint8_t *)"\1x\4test\0", .data.flags = NODE_FLAGS_AUTH},
+{(uint8_t *)"\5below\1x\4test\0", .data.flags = NODE_FLAGS_AUTH}};
 
 struct zone_flags ZONE_FLAGS_ADD[FLAGS_ZONE_SIZE] = {
-{(uint8_t *)"\4test\0", NODE_FLAGS_WILDCARD_CHILD},
-{(uint8_t *)"\1*\4test\0", NODE_FLAGS_AUTH },
-{(uint8_t *)"\3sub\4test\0", NODE_FLAGS_AUTH},
-{(uint8_t *)"\4glue\3sub\4test\0", NODE_FLAGS_AUTH},
-{(uint8_t *)"\1x\4test\0", NODE_FLAGS_DELEG},
-{(uint8_t *)"\5below\1x\4test\0", NODE_FLAGS_NONAUTH}};
+{(uint8_t *)"\4test\0", {NODE_FLAGS_WILDCARD_CHILD}},
+{(uint8_t *)"\1*\4test\0", {NODE_FLAGS_AUTH}},
+{(uint8_t *)"\3sub\4test\0", {NODE_FLAGS_AUTH}},
+{(uint8_t *)"\4glue\3sub\4test\0", {NODE_FLAGS_AUTH}},
+{(uint8_t *)"\1x\4test\0", {NODE_FLAGS_DELEG}},
+{(uint8_t *)"\5below\1x\4test\0", {NODE_FLAGS_NONAUTH}}};
+
+struct zone_flags ZONE_HINTS_INIT[FLAGS_ZONE_SIZE] = {
+{(uint8_t *)"\4test\0", .data.deleg = {NULL, NULL}},
+{(uint8_t *)"\1*\4test\0", .data.deleg = {NULL, NULL}},
+{(uint8_t *)"\3sub\4test\0", .data.deleg = {(uint8_t *)"\4glue\3sub\4test\0", NULL}},
+{(uint8_t *)"\4glue\3sub\4test\0", .data.deleg = {NULL, NULL}},
+{(uint8_t *)"\1x\4test\0", .data.deleg = {NULL, NULL}},
+{(uint8_t *)"\5below\1x\4test\0", .data.deleg = {NULL, NULL}}};
 
 struct adjust_params {
 	zcreator_t *zc;
@@ -206,9 +217,21 @@ static bool test_flags(const zone_contents_t *zone, struct zone_flags *flags,
 		assert(n);
 		printf("Flags for %s are: %d\n", knot_dname_to_str(n->owner),
 		       n->flags);
-		if (n->flags != flags[i].flags) {
+		if (n->flags != flags[i].data.flags) {
 			return false;
 		}
+	}
+	
+	return true;
+}
+
+static bool test_hints(const zone_contents_t *zone, struct zone_flags *hints,
+                       const size_t hints_size)
+{
+	for (size_t i = 0; i < hints_size; ++i) {
+		zone_node_t *n = NULL;
+		zone_tree_get(zone->nodes, hints[i].name, &n);
+		assert(n);
 	}
 	
 	return true;
@@ -262,7 +285,7 @@ int main(int argc, char *argv[])
 	changeset_init(&ch, owner);
 	zone_update_init(&up, zone, &ch);
 	
-	// --- PREV pointer tests
+	// --- PREV pointer tests ---
 	
 	// Add a record
 	zc.z = ch.add;
@@ -292,7 +315,7 @@ int main(int argc, char *argv[])
 	add_and_update(zone, &ch, sc, del2);
 	TEST_VALIDITY(zone, &up, &ch, "zone adjust: add and remove");
 	
-	// --- NSEC3 tests
+	// --- NSEC3 tests ---
 	
 	// Add all NSEC3 records
 	zc.z = ch.add;
@@ -309,7 +332,7 @@ int main(int argc, char *argv[])
 	add_and_update(zone, &ch, sc, add_nsec3);
 	TEST_VALIDITY(zone, &up, &ch, "zone adjust: remove NSEC3");
 	
-	// --- FLAGS tests
+	// --- FLAGS tests ---
 	
 	// Reset zone and changes
 	zone_contents_deep_free(&zone);
@@ -333,8 +356,15 @@ int main(int argc, char *argv[])
 	TEST_VALIDITY(zone, &up, &ch, "zone adjust: flags add apply");
 	ok(test_flags(zone, ZONE_FLAGS_ADD, FLAGS_ZONE_SIZE), "zone adjust: flags add set");
 	
-	// --- Additional pointers tests
+	// Add NS records back
+	zc.z = ch.add;
+	add_and_update(zone, &ch, sc, remove_ns);
+	TEST_VALIDITY(zone, &up, &ch, "zone adjust: flags add");
+	ok(test_flags(zone, ZONE_FLAGS_INIT, FLAGS_ZONE_SIZE), "zone adjust: flags add set");
 	
+	// --- Additional pointers tests ---
+	
+	ok(test_hints(zone, ZONE_HINTS_INIT, FLAGS_ZONE_SIZE), "zone adjust: additional hints");
 	
 	return 0;
 }
