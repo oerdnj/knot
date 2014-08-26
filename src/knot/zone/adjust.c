@@ -43,11 +43,17 @@ static bool node_is_glue(const zone_node_t *n)
 static void adjust_node_flags(zone_node_t *n)
 {
 	if (node_is_deleg(n)) {
-		n->flags = NODE_FLAGS_DELEG;
+		n->flags &= ~NODE_FLAGS_AUTH;
+		n->flags &= ~NODE_FLAGS_NONAUTH;
+		n->flags |= NODE_FLAGS_DELEG;
 	} else if (node_is_glue(n)) {
-		n->flags = NODE_FLAGS_NONAUTH;
+		n->flags &= ~NODE_FLAGS_DELEG;
+		n->flags &= ~NODE_FLAGS_AUTH;
+		n->flags |= NODE_FLAGS_NONAUTH;
 	} else {
-		n->flags = NODE_FLAGS_AUTH;
+		n->flags &= ~NODE_FLAGS_DELEG;
+		n->flags &= ~NODE_FLAGS_NONAUTH;
+		n->flags |= NODE_FLAGS_AUTH;
 	}
 	
 	if (knot_dname_is_wildcard(n->owner) && n->parent) {
@@ -234,7 +240,5 @@ int zone_adjust(zone_update_t *up)
 	} else {
 		return full_adjust(up->zone);
 	}
-	
-	// TODO: nsec3param adjust (or better yet, remove)
 }
 

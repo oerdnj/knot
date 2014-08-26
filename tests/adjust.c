@@ -28,12 +28,12 @@ static const char *zone_str =
 "x.test. IN TXT \"test\"\n";
 
 static const char *add1 =
-"test. 3600 IN SOA a. b. 2 1 1 1 1\n"
+"test. 3600 IN SOA a. b. 1 1 1 1 1\n"
 "c.test. IN TXT \"test\"\n"
 "d.test. IN TXT \"test\"\n";
 
 static const char *switch_nsec3 =
-"test. 3600 IN SOA a. b. 3 1 1 1 1\n"
+"test. 3600 IN SOA a. b. 1 1 1 1 1\n"
 "test. 0 IN NSEC3PARAM 1 0 10 DEADBEEF\n"
 "65QBS2TUD2SO2HMDIIFLAQVDHPL7EH56.test. IN NSEC3 1 0 10 DEADBEEF 7B4NC67ERA0FFG0QFHRRDCKH0OK3PESO TXT\n" // d.test.
 "7B4NC67ERA0FFG0QFHRRDCKH0OK3PESO.test. IN NSEC3 1 0 10 DEADBEEF R8A5UNFOSHQNDVESUCUULJ8IHQ7N7ID7 SOA NSEC3PARAM\n" // test.
@@ -41,26 +41,58 @@ static const char *switch_nsec3 =
 "RQPTAJDPMTSC4ADKMOMIA5K3QS1HHKE9.test. IN NSEC3 1 0 10 DEADBEEF 65QBS2TUD2SO2HMDIIFLAQVDHPL7EH56 TXT\n"; // c.test
 
 static const char *add_nsec3=
-"test. 3600 IN SOA a. b. 4 1 1 1 1\n"
+"test. 3600 IN SOA a. b. 1 1 1 1 1\n"
 "f.test. IN TXT \"test\"\n"
 "HAPB22MLBPNJTUSSFP5QNIBAQJHPP0VM.test. IN NSEC3 1 0 10 DEADBEEF R8A5UNFOSHQNDVESUCUULJ8IHQ7N7ID7 TXT\n";
 
 static const char *del1 =
-"test. 3600 IN SOA a. b. 5 1 1 1 1\n"
+"test. 3600 IN SOA a. b. 1 1 1 1 1\n"
 "x.test. IN TXT \"test\"\n";
 
 static const char *del2 =
-"test. 3600 IN SOA a. b. 6 1 1 1 1\n"
+"test. 3600 IN SOA a. b. 1 1 1 1 1\n"
 "b.test. IN TXT \"test\"\n"
 "x.test. IN TXT \"test\"\n";
 
 static const char *flags_zone = 
-"test. 3600 IN SOA a. b. 7 1 1 1 1\n"
+"test. 3600 IN SOA a. b. 1 1 1 1 1\n"
 "*.test. IN A 5.6.7.8\n"
-"ns.test. IN NS ns1\n"
 "sub.test. IN NS sub.whatever.\n"
 "glue.sub.test. IN A 1.2.3.4\n"
-"x.test. IN TXT \"test\"\n";
+"x.test. IN TXT \"test\"\n"
+"below.x.test. IN A 1.2.3.4\n";
+
+static const char *add_ns = 
+"test. 3600 IN SOA a. b. 1 1 1 1 1\n"
+"sub.test. IN A 1.2.3.4\n"
+"x.test. IN NS deleg.somewhere.\n";
+
+static const char *remove_ns =
+"test. 3600 IN SOA a. b. 1 1 1 1 1\n"
+"sub.test. IN NS sub.whatever.\n";
+
+struct zone_flags {
+	uint8_t *name;
+	uint8_t flags;
+};
+
+#define FLAGS_ZONE_SIZE 6
+
+struct zone_flags ZONE_FLAGS_INIT[FLAGS_ZONE_SIZE] = {
+{(uint8_t *)"\4test\0", NODE_FLAGS_WILDCARD_CHILD},
+{(uint8_t *)"\1*\4test\0", NODE_FLAGS_AUTH },
+{(uint8_t *)"\3sub\4test\0", NODE_FLAGS_DELEG},
+{(uint8_t *)"\4glue\3sub\4test\0", NODE_FLAGS_NONAUTH},
+{(uint8_t *)"\1x\4test\0", NODE_FLAGS_AUTH},
+{(uint8_t *)"\5below\1x\4test\0", NODE_FLAGS_AUTH}};
+
+struct zone_flags ZONE_FLAGS_ADD[FLAGS_ZONE_SIZE] = {
+{(uint8_t *)"\4test\0", NODE_FLAGS_WILDCARD_CHILD},
+{(uint8_t *)"\1*\4test\0", NODE_FLAGS_AUTH },
+{(uint8_t *)"\3sub\4test\0", NODE_FLAGS_AUTH},
+{(uint8_t *)"\4glue\3sub\4test\0", NODE_FLAGS_AUTH},
+{(uint8_t *)"\1x\4test\0", NODE_FLAGS_DELEG},
+{(uint8_t *)"\5below\1x\4test\0", NODE_FLAGS_NONAUTH}};
 
 struct adjust_params {
 	zcreator_t *zc;
@@ -74,7 +106,7 @@ static void scanner_process(zs_scanner_t *scanner)
 	knot_rrset_t rr;
 	uint8_t owner[KNOT_DNAME_MAXLEN];
 	memcpy(owner, scanner->r_owner, knot_dname_size(scanner->r_owner));
-	knot_dname_to_lower(&owner);
+	knot_dname_to_lower((knot_dname_t *)&owner);
 	knot_rrset_init(&rr, owner, scanner->r_type, scanner->r_class);
 	int ret = knot_rrset_add_rdata(&rr, scanner->r_data, scanner->r_data_length,
 	                               scanner->r_ttl, NULL);
@@ -115,17 +147,8 @@ static bool nsec3_set_ok(zone_node_t *n, zone_contents_t *zone)
 	return n->nsec3_node == found_nsec3 && n->nsec3_node->nsec3_node == n;
 }
 
-static bool flags_set_ok(zone_node_t *n, zone_contents_t *zone)
-{
-	uint8_t flags = 0;
-	if (knot_dname_is_wildcard(n->owner) && n->parent) {
-		flags |= NODE_FLAGS_WILDCARD_CHILD;
-	}
-	if (knot_
-}
-
 // Iterates through the zone and checks previous pointers
-static bool test_prev_for_tree(zone_tree_t *t, zone_contents_t *zone)
+static bool test_prev_for_tree(const zone_tree_t *t, const zone_contents_t *zone)
 {
 	if (t == NULL) {
 		return true;
@@ -160,11 +183,6 @@ static bool test_prev_for_tree(zone_tree_t *t, zone_contents_t *zone)
 			}
 		}
 		
-		if (!flags_set_ok(curr, zone)) {
-			diag("Flags not properly set");
-			return false;
-		}
-		
 		hattrie_iter_next(itt);
 	}
 	
@@ -174,9 +192,26 @@ static bool test_prev_for_tree(zone_tree_t *t, zone_contents_t *zone)
 	return first->prev == curr;
 }
 
-static bool test_zone(zone_contents_t *zone)
+static bool test_zone(const zone_contents_t *zone)
 {
 	return test_prev_for_tree(zone->nodes, zone) && test_prev_for_tree(zone->nsec3_nodes, zone);
+}
+
+static bool test_flags(const zone_contents_t *zone, struct zone_flags *flags,
+                       const size_t flags_size)
+{
+	for (size_t i = 0; i < flags_size; ++i) {
+		zone_node_t *n = NULL;
+		zone_tree_get(zone->nodes, flags[i].name, &n);
+		assert(n);
+		printf("Flags for %s are: %d\n", knot_dname_to_str(n->owner),
+		       n->flags);
+		if (n->flags != flags[i].flags) {
+			return false;
+		}
+	}
+	
+	return true;
 }
 
 static void add_and_update(zone_contents_t *zone, changeset_t *ch,
@@ -201,7 +236,7 @@ static void add_and_update(zone_contents_t *zone, changeset_t *ch,
 
 int main(int argc, char *argv[])
 {
-	plan(10);
+	plan(13);
 	
 	// Fill zone
 	knot_dname_t *owner = knot_dname_from_str("test.");
@@ -276,15 +311,27 @@ int main(int argc, char *argv[])
 	
 	// --- FLAGS tests
 	
+	// Reset zone and changes
 	zone_contents_deep_free(&zone);
-	// Reset zone
 	zone = zone_contents_new(owner);
 	assert(zone);
 	zc.z = zone;
+	zone_update_init(&up, zone, NULL);
 	params.ch = NULL;
 	ret = zs_scanner_parse(sc, flags_zone, flags_zone + strlen(flags_zone), true);
 	assert(ret == 0);
-	TEST_VALIDITY(zone, &up, &ch, "zone adjust: flags");
+	TEST_VALIDITY(zone, &up, &ch, "zone adjust: flags apply");
+	ok(test_flags(zone, ZONE_FLAGS_INIT, FLAGS_ZONE_SIZE), "zone adjust: flags set");
+	
+	// Add and remove NS records
+	params.ch = &ch;
+	zc.z = ch.add;
+	add_and_update(zone, &ch, sc, add_ns);
+	zc.z = ch.remove;
+	zone_update_init(&up, zone, &ch);
+	add_and_update(zone, &ch, sc, remove_ns);
+	TEST_VALIDITY(zone, &up, &ch, "zone adjust: flags add apply");
+	ok(test_flags(zone, ZONE_FLAGS_ADD, FLAGS_ZONE_SIZE), "zone adjust: flags add set");
 	
 	return 0;
 }
