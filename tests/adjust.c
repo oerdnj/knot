@@ -67,15 +67,24 @@ static const char *add_ns =
 "sub.test. IN A 1.2.3.4\n"
 "x.test. IN NS deleg.somewhere.\n";
 
+static const char *add_ns_pair = 
+"test. 3600 IN SOA a. b. 1 1 1 1 1\n"
+"sub2.test. IN NS glue2.sub.test.\n"
+"glue2.sub2.test. IN A 1.2.3.4\n";
+
 static const char *remove_ns =
 "test. 3600 IN SOA a. b. 1 1 1 1 1\n"
 "sub.test. IN NS sub.whatever.\n";
+
+static const char *remove_glue =
+"test. 3600 IN SOA a. b. 1 1 1 1 1\n"
+"glue.sub.test. IN A 1.2.3.4\n";
 
 struct zone_flags {
 	uint8_t *name;
 	union {
 		uint8_t flags;
-		uint8_t *deleg[16];
+		const uint8_t *deleg[16];
 	} data;
 };
 
@@ -97,10 +106,11 @@ struct zone_flags ZONE_FLAGS_ADD[FLAGS_ZONE_SIZE] = {
 {(uint8_t *)"\1x\4test\0", .data.flags = NODE_FLAGS_DELEG},
 {(uint8_t *)"\5below\1x\4test\0", .data.flags = NODE_FLAGS_NONAUTH}};
 
-#define HINTS_SIZE 1
+#define HINTS_SIZE 2
 
 struct zone_flags ZONE_HINTS_INIT[HINTS_SIZE] = {
-{(uint8_t *)"\3sub\4test\0", .data.deleg = {(uint8_t *)"\4glue\3sub\4test\0"}}};
+{(uint8_t *)"\3sub\4test\0", .data.deleg = {(uint8_t *)"\4glue\3sub\4test\0"}},
+{(uint8_t *)"\4sub2\4test\0", .data.deleg = {(uint8_t *)"\5glue2\3sub\4test\0"}}};
 
 struct adjust_params {
 	zcreator_t *zc;
@@ -225,11 +235,16 @@ static bool test_flags(const zone_contents_t *zone, struct zone_flags *flags,
 static bool hints_contain(const struct rr_data *data,
                           const uint8_t **hints, size_t hint_count)
 {
+	if (data->additional == NULL) {
+		diag("Additional hints not set");
+		return false;
+	}
+	
 	for (uint16_t i = 0; i < data->rrs.rr_count; ++i) {
 		for (size_t j = 0; j < hint_count; ++j) {
 			if (data->additional[i] &&
 			    knot_dname_is_equal(data->additional[i]->owner,
-			                        (knot_dname_t *)(hints[j]))) {
+			                        hints[j])) {
 				return true;
 			}
 		}
@@ -245,11 +260,12 @@ static bool test_hints(const zone_contents_t *zone, struct zone_flags *hints,
 		zone_node_t *n = NULL;
 		zone_tree_get(zone->nodes, hints[i].name, &n);
 		assert(n);
-		for (uint16_t j = 0; j < n->rrset_count; j++) {
+		for (uint16_t j = 0; j < n->rrset_count; ++j) {
+			printf("Looking for %s %d\n", hints[i].name, j);
 			if (knot_rrtype_additional_needed(n->rrs[j].type)) {
 				if (!hints_contain(&n->rrs[j],
 				                   hints[i].data.deleg, 1)) {
-					    return false;
+					return false;
 				}
 				
 			}
@@ -378,15 +394,24 @@ int main(int argc, char *argv[])
 	TEST_VALIDITY(zone, &up, &ch, "zone adjust: flags add apply");
 	ok(test_flags(zone, ZONE_FLAGS_ADD, FLAGS_ZONE_SIZE), "zone adjust: flags add set");
 	
-	// Add NS records back
+	// Add NS records back and add one extra NS/A pair
 	zc.z = ch.add;
 	add_and_update(zone, &ch, sc, remove_ns);
-	TEST_VALIDITY(zone, &up, &ch, "zone adjust: flags add back");
-	ok(test_flags(zone, ZONE_FLAGS_INIT, FLAGS_ZONE_SIZE), "zone adjust: flags add back");
+	add_and_update(zone, &ch, sc, add_ns_pair);
+	zone_adjust(&up);
+	changeset_clear(&ch);
+	changeset_init(&ch, zone->apex->owner);
 	
 	// --- Additional pointers tests ---
 	
 	ok(test_hints(zone, ZONE_HINTS_INIT, HINTS_SIZE), "zone adjust: additional hints");
+	
+	// Remove glue from zone
+	
+	zc.z = ch.remove;
+	add_and_update(zone, &ch, sc, remove_glue);
+	zone_adjust(&up);
+	ok(test_hints(zone, ZONE_HINTS_INIT, HINTS_SIZE), "zone adjust: remove glue hints");
 	
 	return 0;
 }
