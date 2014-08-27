@@ -90,20 +90,17 @@ struct zone_flags ZONE_FLAGS_INIT[FLAGS_ZONE_SIZE] = {
 {(uint8_t *)"\5below\1x\4test\0", .data.flags = NODE_FLAGS_AUTH}};
 
 struct zone_flags ZONE_FLAGS_ADD[FLAGS_ZONE_SIZE] = {
-{(uint8_t *)"\4test\0", {NODE_FLAGS_WILDCARD_CHILD}},
-{(uint8_t *)"\1*\4test\0", {NODE_FLAGS_AUTH}},
-{(uint8_t *)"\3sub\4test\0", {NODE_FLAGS_AUTH}},
-{(uint8_t *)"\4glue\3sub\4test\0", {NODE_FLAGS_AUTH}},
-{(uint8_t *)"\1x\4test\0", {NODE_FLAGS_DELEG}},
-{(uint8_t *)"\5below\1x\4test\0", {NODE_FLAGS_NONAUTH}}};
+{(uint8_t *)"\4test\0", .data.flags = NODE_FLAGS_WILDCARD_CHILD},
+{(uint8_t *)"\1*\4test\0", .data.flags = NODE_FLAGS_AUTH},
+{(uint8_t *)"\3sub\4test\0", .data.flags = NODE_FLAGS_AUTH},
+{(uint8_t *)"\4glue\3sub\4test\0", .data.flags = NODE_FLAGS_AUTH},
+{(uint8_t *)"\1x\4test\0", .data.flags = NODE_FLAGS_DELEG},
+{(uint8_t *)"\5below\1x\4test\0", .data.flags = NODE_FLAGS_NONAUTH}};
 
-struct zone_flags ZONE_HINTS_INIT[FLAGS_ZONE_SIZE] = {
-{(uint8_t *)"\4test\0", .data.deleg = {NULL, NULL}},
-{(uint8_t *)"\1*\4test\0", .data.deleg = {NULL, NULL}},
-{(uint8_t *)"\3sub\4test\0", .data.deleg = {(uint8_t *)"\4glue\3sub\4test\0", NULL}},
-{(uint8_t *)"\4glue\3sub\4test\0", .data.deleg = {NULL, NULL}},
-{(uint8_t *)"\1x\4test\0", .data.deleg = {NULL, NULL}},
-{(uint8_t *)"\5below\1x\4test\0", .data.deleg = {NULL, NULL}}};
+#define HINTS_SIZE 1
+
+struct zone_flags ZONE_HINTS_INIT[HINTS_SIZE] = {
+{(uint8_t *)"\3sub\4test\0", .data.deleg = {(uint8_t *)"\4glue\3sub\4test\0"}}};
 
 struct adjust_params {
 	zcreator_t *zc;
@@ -225,6 +222,22 @@ static bool test_flags(const zone_contents_t *zone, struct zone_flags *flags,
 	return true;
 }
 
+static bool hints_contain(const struct rr_data *data,
+                          const uint8_t **hints, size_t hint_count)
+{
+	for (uint16_t i = 0; i < data->rrs.rr_count; ++i) {
+		for (size_t j = 0; j < hint_count; ++j) {
+			if (data->additional[i] &&
+			    knot_dname_is_equal(data->additional[i]->owner,
+			                        (knot_dname_t *)(hints[j]))) {
+				return true;
+			}
+		}
+	}
+	
+	return false;
+}
+
 static bool test_hints(const zone_contents_t *zone, struct zone_flags *hints,
                        const size_t hints_size)
 {
@@ -232,6 +245,15 @@ static bool test_hints(const zone_contents_t *zone, struct zone_flags *hints,
 		zone_node_t *n = NULL;
 		zone_tree_get(zone->nodes, hints[i].name, &n);
 		assert(n);
+		for (uint16_t j = 0; j < n->rrset_count; j++) {
+			if (knot_rrtype_additional_needed(n->rrs[j].type)) {
+				if (!hints_contain(&n->rrs[j],
+				                   hints[i].data.deleg, 1)) {
+					    return false;
+				}
+				
+			}
+		}
 	}
 	
 	return true;
@@ -359,12 +381,12 @@ int main(int argc, char *argv[])
 	// Add NS records back
 	zc.z = ch.add;
 	add_and_update(zone, &ch, sc, remove_ns);
-	TEST_VALIDITY(zone, &up, &ch, "zone adjust: flags add");
-	ok(test_flags(zone, ZONE_FLAGS_INIT, FLAGS_ZONE_SIZE), "zone adjust: flags add set");
+	TEST_VALIDITY(zone, &up, &ch, "zone adjust: flags add back");
+	ok(test_flags(zone, ZONE_FLAGS_INIT, FLAGS_ZONE_SIZE), "zone adjust: flags add back");
 	
 	// --- Additional pointers tests ---
 	
-	ok(test_hints(zone, ZONE_HINTS_INIT, FLAGS_ZONE_SIZE), "zone adjust: additional hints");
+	ok(test_hints(zone, ZONE_HINTS_INIT, HINTS_SIZE), "zone adjust: additional hints");
 	
 	return 0;
 }

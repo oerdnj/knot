@@ -20,8 +20,43 @@
 #include "knot/zone/adjust.h"
 #include "knot/dnssec/zone-nsec.h"
 #include "libknot/rrtype/nsec.h"
+#include "libknot/rrtype/rdname.h"
 
 typedef void (*adjust_callback_t)(zone_tree_t *, zone_contents_t *, zone_node_t *);
+
+static int discover_additionals(struct rr_data *rr_data,
+                                struct zone_contents_t *zone)
+{
+	const knot_rdataset_t *rrs = &rr_data->rrs;
+
+	// Create new additional nodes.
+	const uint16_t rdcount = rrs->rr_count;
+	if (rr_data->additional) {
+		free(rr_data->additional);
+	}
+	rr_data->additional = malloc(rdcount * sizeof(zone_node_t *));
+	if (rr_data->additional == NULL) {
+		ERR_ALLOC_FAILED;
+		return KNOT_ENOMEM;
+	}
+
+	for (uint16_t i = 0; i < rdcount; i++) {
+		// Try to find node for the dname in the RDATA
+		const knot_dname_t *dname = knot_rdata_name(rrs, i, rr_data->type);
+		const zone_node_t *node = NULL, *encloser = NULL, *prev = NULL;
+		
+		zone_contents_find_dname(zone, dname, &node, &encloser, &prev);
+		if (node == NULL && encloser) {
+			// Try to find wildcard child in the zone.
+			node = zone_contents_find_wildcard_child(zone,
+			                                         encloser);
+		}
+
+		rr_data->additional[i] = (zone_node_t *)node;
+	}
+
+	return KNOT_EOK;
+}
 
 static bool node_is_deleg(const zone_node_t *n)
 {
@@ -85,12 +120,22 @@ static int adjust_node_nsec3(zone_contents_t *zone, zone_node_t *n)
 	return KNOT_EOK;
 }
 
+static void adjust_node_hints(zone_contents_t *zone, zone_node_t *n)
+{
+	for (uint16_t i = 0; i < n->rrset_count; ++i) {
+		if (knot_rrtype_additional_needed(n->rrs[i].type)) {
+			discover_additionals(&n->rrs[i], zone);
+		}
+	}
+}
+
 static void adjust_node_full(zone_tree_t *t, zone_contents_t *zone,
                              zone_node_t *n)
 {
 	UNUSED(t);
 	adjust_node_flags(n);
 	adjust_node_nsec3(zone, n);
+	adjust_node_hints(zone, n);
 }
 
 static void adjust_nsec3_node_full(zone_tree_t *t, zone_contents_t *zone,
@@ -109,8 +154,8 @@ static void adjust_node_deletion(zone_tree_t *t, zone_contents_t *zone,
 	zone_tree_get(t, n->owner, &found);
 	if (found) {
 		adjust_node_flags(found);
-		// TODO: wildcard child fixed?
-		// Node stays, nothing more to fix
+		adjust_node_hints(zone, n);
+		// Node stays, no need to fix prev pointers and NSEC3.
 		return;
 	}
 	
@@ -125,6 +170,8 @@ static void adjust_node_deletion(zone_tree_t *t, zone_contents_t *zone,
 static void adjust_node_addition(zone_tree_t *t, zone_contents_t *zone,
                                  zone_node_t *n)
 {
+	adjust_node_full(t, zone, n);
+	
 	zone_node_t *found = NULL;
 	zone_node_t *prev = NULL;
 	zone_tree_get_less_or_equal(t, n->owner, &found, &prev);
@@ -135,9 +182,6 @@ static void adjust_node_addition(zone_tree_t *t, zone_contents_t *zone,
 
 	found->prev = prev;
 	next->prev = found;
-	
-	adjust_node_flags(found);
-	adjust_node_nsec3(zone, found);
 }
 
 static bool set_prev(adjust_callback_t cb)
@@ -236,8 +280,10 @@ int zone_adjust(zone_update_t *up)
 	}
 	
 	if (up->change && !nsec3param_changed(up)) {
+		printf("partial\n");
 		return partial_adjust(up->zone, up->change);
 	} else {
+		printf("full\n");
 		return full_adjust(up->zone);
 	}
 }
