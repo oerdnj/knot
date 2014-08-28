@@ -109,93 +109,6 @@ static int zone_contents_destroy_node_rrsets_from_tree(
 
 /*----------------------------------------------------------------------------*/
 
-static int zone_contents_nsec3_name(const zone_contents_t *zone,
-                                         const knot_dname_t *name,
-                                         knot_dname_t **nsec3_name)
-{
-	return 0;
-//	assert(nsec3_name != NULL);
-//	*nsec3_name = NULL;
-
-//	const knot_nsec3_params_t *nsec3_params =
-//		zone_contents_nsec3params(zone);
-
-//	if (nsec3_params == NULL) {
-//		return KNOT_ENSEC3PAR;
-//	}
-
-//	*nsec3_name = knot_create_nsec3_owner(name, zone->apex->owner,
-//	                                      nsec3_params);
-//	if (*nsec3_name == NULL) {
-//		return KNOT_ERROR;
-//	}
-
-//	return KNOT_EOK;
-}
-
-/*! \brief Link pointers to additional nodes for this RRSet. */
-static int discover_additionals(struct rr_data *rr_data,
-                                zone_contents_t *zone)
-{
-	const zone_node_t *node = NULL, *encloser = NULL, *prev = NULL;
-	const knot_dname_t *dname = NULL;
-	const knot_rdataset_t *rrs = &rr_data->rrs;
-
-	/* Create new additional nodes. */
-	uint16_t rdcount = rrs->rr_count;
-	if (rr_data->additional) {
-		free(rr_data->additional);
-	}
-	rr_data->additional = malloc(rdcount * sizeof(zone_node_t *));
-	if (rr_data->additional == NULL) {
-		ERR_ALLOC_FAILED;
-		return KNOT_ENOMEM;
-	}
-
-	for (uint16_t i = 0; i < rdcount; i++) {
-
-		/* Try to find node for the dname in the RDATA. */
-		dname = knot_rdata_name(rrs, i, rr_data->type);
-		zone_contents_find_dname(zone, dname, &node, &encloser, &prev);
-		if (node == NULL && encloser
-		    && (encloser->flags & NODE_FLAGS_WILDCARD_CHILD)) {
-			/* Find wildcard child in the zone. */
-			node = zone_contents_find_wildcard_child(zone,
-			                                              encloser);
-			assert(node != NULL);
-		}
-
-		rr_data->additional[i] = (zone_node_t *)node;
-	}
-
-	return KNOT_EOK;
-}
-
-/*! \brief Discover additional records for affected nodes. */
-static int adjust_additional(zone_node_t **tnode, void *data)
-{
-//	assert(data != NULL);
-//	assert(tnode != NULL);
-
-//	int ret = KNOT_EOK;
-//	zone_adjust_arg_t *args = (zone_adjust_arg_t *)data;
-//	zone_node_t *node = *tnode;
-
-//	/* Lookup additional records for specific nodes. */
-//	for(uint16_t i = 0; i < node->rrset_count; ++i) {
-//		struct rr_data *rr_data = &node->rrs[i];
-//		if (knot_rrtype_additional_needed(rr_data->type)) {
-//			ret = discover_additionals(rr_data, args->zone);
-//			if (ret != KNOT_EOK) {
-//				break;
-//			}
-//		}
-//	}
-
-//	return ret;
-}
-
-/*----------------------------------------------------------------------------*/
 /*!
  * \brief Tries to find the given domain name in the zone tree.
  *
@@ -212,7 +125,6 @@ static int adjust_additional(zone_node_t **tnode, void *data)
  * \retval 0 if the domain name was not found. \a node may hold any (or none)
  *           node. \a previous is set properly.
  */
-// TODO: jesus christ remove this
 static int zone_contents_find_in_tree(zone_tree_t *tree,
                                            const knot_dname_t *name,
                                            zone_node_t **node,
@@ -725,11 +637,11 @@ int zone_contents_find_nsec3_for_name(const zone_contents_t *zone,
 		return KNOT_ENSEC3CHAIN;
 	}
 
-	knot_dname_t *nsec3_name = NULL;
-	int ret = zone_contents_nsec3_name(zone, name, &nsec3_name);
-
-	if (ret != KNOT_EOK) {
-		return ret;
+	knot_dname_t *nsec3_name = knot_create_nsec3_owner(name, zone->apex->owner,
+	                                                   node_rdataset(zone->apex,
+	                                                   KNOT_RRTYPE_NSEC3PARAM));
+	if (nsec3_name == NULL) {
+		return KNOT_ENOMEM;
 	}
 
 dbg_zone_exec_verb(
@@ -779,44 +691,6 @@ dbg_zone_exec_detail(
 	}
 
 	dbg_zone_verb("find_nsec3_for_name() returning %d\n", exact_match);
-
-	/* The previous may be from wrong NSEC3 chain. Search for previous
-	 * from the right chain. Check iterations, hash algorithm and salt
-	 * values and compare them to the ones from NSEC3PARAM.
-	 */
-	const knot_rdataset_t *nsec3_rrs =
-		node_rdataset(*nsec3_previous, KNOT_RRTYPE_NSEC3);
-	const zone_node_t *original_prev = *nsec3_previous;
-
-	int match = 0;
-	
-#warning get rid of this
-
-//	while (nsec3_rrs && !match) {
-//		for (uint16_t i = 0;
-//		     i < nsec3_rrs->rr_count && !match;
-//		     i++) {
-//			if (knot_zc_nsec3_parameters_match(nsec3_rrs,
-//			                                   &zone->nsec3_params,
-//			                                   i)) {
-//				/* Matching NSEC3PARAM match at position nr.: i. */
-//				match = 1;
-//			}
-//		}
-		
-//		if (match) {
-//			break;
-//		}
-		
-//		/* This RRSET was not a match, try the one from previous node. */
-//		*nsec3_previous = (*nsec3_previous)->prev;
-//		nsec3_rrs = node_rdataset(*nsec3_previous, KNOT_RRTYPE_NSEC3);
-//		if (*nsec3_previous == original_prev || nsec3_rrs == NULL) {
-//			// cycle
-//			*nsec3_previous = NULL;
-//			break;
-//		}
-//	}
 
 	return (exact_match)
 	       ? ZONE_NAME_FOUND

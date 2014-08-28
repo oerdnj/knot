@@ -35,6 +35,7 @@
 #include "knot/dnssec/zone-nsec.h"
 #include "knot/other/debug.h"
 #include "knot/zone/zonefile.h"
+#include "knot/zone/adjust.h"
 #include "libknot/rdata.h"
 #include "knot/zone/zone-dump.h"
 #include "knot/updates/zone-update.h"

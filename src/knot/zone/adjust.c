@@ -77,7 +77,6 @@ static bool node_is_glue(const zone_node_t *n)
 	return n->parent && (node_is_deleg(n->parent) || node_is_glue(n->parent));
 }
 
-#warning TODO: purge flags, use function like those above instead
 static int adjust_node_flags(zone_node_t *n)
 {
 	if (node_is_deleg(n)) {
@@ -110,7 +109,6 @@ static int adjust_node_flags(zone_node_t *n)
 	return KNOT_EOK;
 }
 
-#warning TODO: purge flags, use function like those above instead
 static int adjust_node_flags_full(zone_node_t *n)
 {
 	if (node_is_deleg(n)) {

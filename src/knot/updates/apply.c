@@ -448,7 +448,6 @@ int apply_changesets(zone_t *zone, list_t *chsets, zone_contents_t **new_content
 			return ret;
 		}
 		
-#warning TODO: purge multiple updates, then remove this
 		zone_update_t up;
 		zone_update_init(&up, contents_copy, set);
 		ret = zone_adjust(&up);
@@ -518,7 +517,6 @@ int apply_changesets_directly(zone_contents_t *contents, list_t *chsets)
 			updates_cleanup(chsets);
 			return ret;
 		}
-#warning TODO: to be purged
 		zone_update_t up;
 		zone_update_init(&up, contents, set);
 		ret = zone_adjust(&up);
