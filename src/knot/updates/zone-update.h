@@ -35,6 +35,7 @@ typedef struct {
 	zone_contents_t *zone;        /*!< Zone being updated. */
 	changeset_t *change;          /*!< Changes we want to apply. */
 	mm_ctx_t mm;                  /*!< Memory context used for intermediate nodes. */
+	uint8_t flags;
 } zone_update_t;
 
 /*!
@@ -67,4 +68,7 @@ const zone_node_t *zone_update_get_node(zone_update_t *update,
  * \param  update Zone update to clear.
  */
 void zone_update_clear(zone_update_t *update);
+
+int zone_update_add(zone_update_t *update, const knot_rrset_t *rrset);
+int zone_update_remove(zone_update_t *update, const knot_rrset_t *rrset);
 

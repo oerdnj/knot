@@ -18,6 +18,8 @@
 #include "common-knot/lists.h"
 #include "common/mempool.h"
 
+#define FULL_ADJUST 1 << 1;
+
 static int add_to_node(zone_node_t *node, const zone_node_t *add_node,
                        mm_ctx_t *mm)
 {
@@ -120,6 +122,7 @@ void zone_update_init(zone_update_t *update, zone_contents_t *zone, changeset_t 
 	update->zone = zone;
 	update->change = change;
 	mm_ctx_mempool(&update->mm, 4096);
+	update->flags = 0;
 }
 
 const zone_node_t *zone_update_get_node(zone_update_t *update, const knot_dname_t *dname)
@@ -181,4 +184,14 @@ void zone_update_clear(zone_update_t *update)
 		mp_delete(update->mm.ctx);
 		memset(update, 0, sizeof(*update));
 	}
+}
+
+int zone_update_add(zone_update_t *update, const knot_rrset_t *rrset)
+{
+	return changeset_add_rrset(update->change, rrset);
+}
+
+int zone_update_remove(zone_update_t *update, const knot_rrset_t *rrset)
+{
+	return changeset_rem_rrset(update->change, rrset);
 }

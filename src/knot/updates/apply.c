@@ -93,7 +93,10 @@ static void delete_empty_node(zone_tree_t *tree, zone_node_t *node)
 		// Delete node
 		zone_node_t *removed_node = NULL;
 		zone_tree_remove(tree, node->owner, &removed_node);
-		UNUSED(removed_node);
+		if (removed_node->nsec3_node) {
+			// Clear NSEC3 pointers (both forward and backward)
+			removed_node->nsec3_node->nsec3_node = NULL;
+		}
 		node_free(&node, NULL);
 	}
 }

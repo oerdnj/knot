@@ -65,15 +65,17 @@ enum node_flags {
 	/*! \brief Node is authoritative, default. */
 	NODE_FLAGS_AUTH =            0 << 0,
 	/*! \brief Node is a delegation point (i.e. marking a zone cut). */
-	NODE_FLAGS_DELEG =           1 << 0,
+	NODE_FLAGS_DELEG =           1 << 1,
 	/*! \brief Node is not authoritative (i.e. below a zone cut). */
-	NODE_FLAGS_NONAUTH =         1 << 1,
+	NODE_FLAGS_NONAUTH =         1 << 2,
 	/*! \brief NSEC/NSEC3 was removed from this node. */
-	NODE_FLAGS_REMOVED_NSEC =    1 << 2,
+	NODE_FLAGS_REMOVED_NSEC =    1 << 3,
 	/*! \brief Node is empty and will be deleted after update. */
-	NODE_FLAGS_EMPTY =           1 << 3,
+	NODE_FLAGS_EMPTY =           1 << 4,
 	/*! \brief Node has a wildcard child. */
-	NODE_FLAGS_WILDCARD_CHILD =  1 << 4
+	NODE_FLAGS_WILDCARD_CHILD =  1 << 5,
+	/*! \brief Node has a wildcard child. */
+	NODE_FLAGS_GLUE =            1 << 6
 };
 
 /* ------------------------- Node create/free --------------------------------*/
