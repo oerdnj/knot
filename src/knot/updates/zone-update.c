@@ -18,8 +18,6 @@
 #include "common-knot/lists.h"
 #include "common/mempool.h"
 
-#define FULL_ADJUST 1 << 1;
-
 static int add_to_node(zone_node_t *node, const zone_node_t *add_node,
                        mm_ctx_t *mm)
 {
@@ -115,14 +113,41 @@ static zone_node_t *node_deep_copy(const zone_node_t *node, mm_ctx_t *mm)
 	return synth_node;
 }
 
+static bool zone_empty(zone)
+{
+	return zone->nsec3_nodes == NULL && hattrie_weight(zone->nodes) == 1 &&
+	       zone->apex->rrset_count == 0;
+}
+
 /* ------------------------------- API -------------------------------------- */
 
-void zone_update_init(zone_update_t *update, zone_contents_t *zone, changeset_t *change)
+int zone_update_init(zone_update_t *update, zone_t *zone, zone_update_flags_t flags)
 {
+	if (update == NULL || zone == NULL) {
+		return KNOT_EINVAL;
+	}
+	
+	memset(update, 0, sizeof(*update));
 	update->zone = zone;
-	update->change = change;
+	
+	if (flags & UPDATE_INCREMENTAL) {
+		int ret = changeset_init(&update->change, zone->name);
+		if (ret != KNOT_EOK) {
+			return ret;
+		}
+		assert(zone->contents);
+		update->c = zone->contents;
+	} else if (flags & UPDATE_FULL) {
+		update->c = zone_contents_new(zone->name);
+		if (update->c == NULL) {
+			return KNOT_ENOMEM;
+		}
+	}
+	
 	mm_ctx_mempool(&update->mm, 4096);
 	update->flags = 0;
+	
+	return KNOT_EOK;
 }
 
 const zone_node_t *zone_update_get_node(zone_update_t *update, const knot_dname_t *dname)
@@ -132,8 +157,8 @@ const zone_node_t *zone_update_get_node(zone_update_t *update, const knot_dname_
 	}
 
 	const zone_node_t *old_node =
-		zone_contents_find_node(update->zone, dname);
-	if (update->change == NULL) {
+		zone_contents_find_node(update->c, dname);
+	if (update->flags & UPDATE_FULL) {
 		// No changeset, no changes.
 		return old_node;
 	}
@@ -183,15 +208,74 @@ void zone_update_clear(zone_update_t *update)
 	if (update) {
 		mp_delete(update->mm.ctx);
 		memset(update, 0, sizeof(*update));
+		knot_ch
 	}
 }
 
 int zone_update_add(zone_update_t *update, const knot_rrset_t *rrset)
 {
-	return changeset_add_rrset(update->change, rrset);
+	if (update->flags & UPDATE_INCREMENTAL) {
+		return changeset_add_rrset(update->change, rrset);
+	} else if (update->flags & UPDATE_FULL) {
+		zone_node_t *n;
+		return zone_contents_add_rr(update->zone, rrset, &n);
+	} else {
+		return KNOT_EINVAL;
+	}
 }
 
 int zone_update_remove(zone_update_t *update, const knot_rrset_t *rrset)
 {
-	return changeset_rem_rrset(update->change, rrset);
+	if (update->flags & UPDATE_INCREMENTAL) {
+		return changeset_rem_rrset(update->change, rrset);
+	} else {
+		// Removing from zone during creation does not make sense.
+		return KNOT_EINVAL;
+	}
+}
+
+int zone_update_commit(zone_update_t *update)
+{
+	if (update->flags & UPDATE_SIGN) {
+		int ret = sign_change(update);
+		if (ret != KNOT_EOK) {
+			return ret;
+		}
+	}
+	
+	if (update->flags & UPDATE_FULL) {
+		zone_contents_t *old_contents =
+		                zone_switch_contents(zone, update->c);
+		synchronize_rcu();
+		
+		zone_contents_deep_free(&old_contents);
+		return KNOT_EOK;
+	} else if (update->flags & UPDATE_INCREMENTAL) {
+		const bool change_made = !changeset_empty(&update->change);
+		if (!change_made) {
+			return KNOT_EOK;
+		}
+		
+		zone_contents_t *new_contents;
+		int ret = apply_changeset(update->zone, update->change, &new_contents);
+		if (ret != KNOT_EOK) {
+			return ret;
+		}
+	
+		ret = zone_change_store(update->zone, update->change);
+		if (ret != KNOT_EOK) {
+			update_rollback(&update->change);
+			update_free_zone(&new_contents);
+			return ret;
+		}
+	
+		zone_contents_t *old_contents = zone_switch_contents(update->zone,
+		                                                     new_contents);
+		synchronize_rcu();
+		
+		update_free_zone(&old_contents);
+		update_cleanup(&update->change);
+	} else {
+		return KNOT_EINVAL;
+	}
 }

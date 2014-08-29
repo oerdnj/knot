@@ -28,6 +28,7 @@
 
 #include "libknot/packet/pkt.h"
 #include "knot/zone/zonedb.h"
+#include "knot/updates/zone-update.h"
 
 struct query_data;
 struct answer_data;
@@ -38,7 +39,7 @@ struct xfr_proc {
 	unsigned npkts;  /* Packets processed. */
 	unsigned nbytes; /* Bytes processed. */
 	struct timeval tstamp; /* Start time. */
-	zone_contents_t *contents; /* Processed zone. */
+	zone_update_t update;
 };
 
 /*! \brief Generic transfer processing (reused for IXFR).

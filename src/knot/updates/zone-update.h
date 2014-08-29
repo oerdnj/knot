@@ -32,21 +32,26 @@
 
 /*! \brief Structure for zone contents updating / querying \todo to be moved to new ZONE API */
 typedef struct {
-	zone_contents_t *zone;        /*!< Zone being updated. */
-	changeset_t *change;          /*!< Changes we want to apply. */
+	zone_t *zone;        /*!< Zone being updated. */
+	zone_contents_t *c;
+	changeset_t change;          /*!< Changes we want to apply. */
 	mm_ctx_t mm;                  /*!< Memory context used for intermediate nodes. */
 	uint8_t flags;
 } zone_update_t;
+
+typedef enum {
+	UPDATE_FULL = 1 << 0,
+	UPDATE_INCREMENTAL = 1 << 1,
+	FULL_ADJUST = 1 << 2
+} zone_update_flags_t;
 
 /*!
  * \brief Inits given zone update structure, new memory context is created.
  *
  * \param update  Zone update structure to init.
  * \param zone    Init with this zone.
- * \param change  Init with this changeset. \todo will not be present in zone API
  */
-void zone_update_init(zone_update_t *update, zone_contents_t *zone,
-                      changeset_t *change);
+int zone_update_init(zone_update_t *update, zone_t *zone, zone_update_flags_t flags);
 
 /*!
  * \brief Returns node that would be in the zone after updating it.
@@ -71,4 +76,5 @@ void zone_update_clear(zone_update_t *update);
 
 int zone_update_add(zone_update_t *update, const knot_rrset_t *rrset);
 int zone_update_remove(zone_update_t *update, const knot_rrset_t *rrset);
+int zone_update_commit(zone_update_t *update);
 

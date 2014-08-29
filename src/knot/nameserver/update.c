@@ -160,12 +160,8 @@ static void store_original_qname(struct query_data *qdata, const knot_pkt_t *pkt
 	memcpy(qdata->orig_qname, knot_pkt_qname(pkt), pkt->qname_size);
 }
 
-static int process_bulk(zone_t *zone, list_t *requests, changeset_t *ddns_ch)
+static int process_bulk(zone_t *zone, list_t *requests, zone_update_t *up)
 {
-	// Init zone update structure.
-	zone_update_t zone_update;
-	zone_update_init(&zone_update, zone->contents, ddns_ch);
-
 	// Walk all the requests and process.
 	struct request_data *req;
 	WALK_LIST(req, *requests) {
@@ -178,13 +174,13 @@ static int process_bulk(zone_t *zone, list_t *requests, changeset_t *ddns_ch)
 		store_original_qname(&qdata, req->query);
 		process_query_qname_case_lower(req->query);
 
-		int ret = check_prereqs(req, zone, &zone_update, &qdata);
+		int ret = check_prereqs(req, zone, up, &qdata);
 		if (ret != KNOT_EOK) {
 			// Skip updates with failed prereqs.
 			continue;
 		}
 
-		ret = process_single_update(req, zone, &zone_update, &qdata);
+		ret = process_single_update(req, zone, up, &qdata);
 		if (ret != KNOT_EOK) {
 			return ret;
 		}
@@ -199,27 +195,20 @@ static int process_normal(zone_t *zone, list_t *requests)
 {
 	assert(requests);
 
-	// Create DDNS change.
-	changeset_t ddns_ch;
-	int ret = changeset_init(&ddns_ch, zone->name);
+	// Init zone update structure
+	zone_update_t up;
+	int ret = zone_update_init(&up, zone, UPDATE_INCREMENTAL);
 	if (ret != KNOT_EOK) {
 		set_rcodes(requests, KNOT_RCODE_SERVFAIL);
 		return ret;
 	}
 
 	// Process all updates.
-	ret = process_bulk(zone, requests, &ddns_ch);
+	ret = process_bulk(zone, requests, &up);
 	if (ret != KNOT_EOK) {
 		changeset_clear(&ddns_ch);
 		set_rcodes(requests, KNOT_RCODE_SERVFAIL);
 		return ret;
-	}
-
-	zone_contents_t *new_contents = NULL;
-	const bool change_made = !changeset_empty(&ddns_ch);
-	if (!change_made) {
-		changeset_clear(&ddns_ch);
-		return KNOT_EOK;
 	}
 
 	// Apply changes.

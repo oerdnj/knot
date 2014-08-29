@@ -270,7 +270,7 @@ static void axfr_answer_cleanup(struct answer_data *data)
 
 	struct xfr_proc *proc = data->ext;
 	if (proc) {
-		zone_contents_deep_free(&proc->contents);
+		zone_update_clear(&proc->update);
 		mm_free(data->mm, proc);
 		data->ext = NULL;
 	}
@@ -280,22 +280,19 @@ static int axfr_answer_init(struct answer_data *data)
 {
 	assert(data);
 
-	/* Create new zone contents. */
-	zone_t *zone = data->param->zone;
-	zone_contents_t *new_contents = zone_contents_new(zone->name);
-	if (new_contents == NULL) {
-		return KNOT_ENOMEM;
-	}
-
 	/* Create new processing context. */
 	struct xfr_proc *proc = mm_alloc(data->mm, sizeof(struct xfr_proc));
 	if (proc == NULL) {
-		zone_contents_deep_free(&new_contents);
 		return KNOT_ENOMEM;
 	}
 
 	memset(proc, 0, sizeof(struct xfr_proc));
-	proc->contents = new_contents;
+	
+	int ret = zone_update_init(&proc->update, data->param->zone, UPDATE_FULL);
+	if (ret != KNOT_EOK) {
+		mm_free(data->mm, proc);
+		return ret;
+	}
 	gettimeofday(&proc->tstamp, NULL);
 
 	/* Set up cleanup callback. */
@@ -319,29 +316,18 @@ static int axfr_answer_finalize(struct answer_data *adata)
 	 * marked authoritative / delegation point.
 	 */
 	struct xfr_proc *proc = adata->ext;
-	zone_update_t up;
-	zone_update_init(&up, proc->contents, NULL);
-	int rc = zone_adjust(&up);
-	if (rc != KNOT_EOK) {
-		return rc;
+	int ret = zone_update_commit(&proc->update);
+	if (ret != KNOT_EOK) {
+		return ret;
 	}
 
-	/* Switch contents. */
-	zone_t *zone = adata->param->zone;
-	zone_contents_t *old_contents =
-	                zone_switch_contents(zone, proc->contents);
-	synchronize_rcu();
-
-	AXFRIN_LOG(LOG_INFO, "finished, "
-	           "serial %u -> %u, %.02f seconds, %u messages, %u bytes",
-	           zone_contents_serial(old_contents),
-	           zone_contents_serial(proc->contents),
-	           time_diff(&proc->tstamp, &now) / 1000.0,
-	           proc->npkts, proc->nbytes);
-
-	/* Do not free new contents with cleanup. */
-	zone_contents_deep_free(&old_contents);
-	proc->contents = NULL;
+#warning logs with serials
+//	AXFRIN_LOG(LOG_INFO, "finished, "
+//	           "serial %u -> %u, %.02f seconds, %u messages, %u bytes",
+//	           zone_contents_serial(old_contents),
+//	           zone_contents_serial(proc->contents),
+//	           time_diff(&proc->tstamp, &now) / 1000.0,
+//	           proc->npkts, proc->nbytes);
 
 	return KNOT_EOK;
 }
@@ -356,7 +342,7 @@ static int axfr_answer_packet(knot_pkt_t *pkt, struct xfr_proc *proc)
 	proc->nbytes += pkt->size;
 
 	/* Init zone creator. */
-	zcreator_t zc = {.z = proc->contents, .master = false, .ret = KNOT_EOK };
+	zcreator_t zc = {.z = proc->update.c, .master = false, .ret = KNOT_EOK };
 
 	const knot_pktsection_t *answer = knot_pkt_section(pkt, KNOT_ANSWER);
 	for (uint16_t i = 0; i < answer->count; ++i) {
