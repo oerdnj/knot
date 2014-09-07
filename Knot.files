@@ -229,6 +229,8 @@ src/libknot/packet/compr.c
 src/libknot/packet/compr.h
 src/libknot/packet/pkt.c
 src/libknot/packet/pkt.h
+src/libknot/packet/rrset-wire.c
+src/libknot/packet/rrset-wire.h
 src/libknot/packet/wire.h
 src/libknot/processing/process.c
 src/libknot/processing/process.h
@@ -327,6 +329,7 @@ tests/rdataset.c
 tests/requestor.c
 tests/rrl.c
 tests/rrset.c
+tests/rrset_wire.c
 tests/sample_conf.h
 tests/server.c
 tests/slab.c
@@ -335,10 +338,7 @@ tests/worker_pool.c
 tests/worker_queue.c
 tests/zone_events.c
 tests/zonedb.c
+tests/zone-update.c
 tests/ztree.c
 src/knot/updates/zone-update.c
 src/knot/updates/zone-update.h
-tests/zone_update.c
-src/knot/zone/adjust.c
-src/knot/zone/adjust.h
-tests/adjust.c
