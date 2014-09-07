@@ -208,8 +208,74 @@ void zone_update_clear(zone_update_t *update)
 	if (update) {
 		mp_delete(update->mm.ctx);
 		memset(update, 0, sizeof(*update));
-		knot_ch
 	}
+}
+
+static bool apex_rr_changed(const zone_contents_t *old_contents,
+                            const zone_contents_t *new_contents,
+                            uint16_t type)
+{
+	knot_rrset_t old_rr = node_rrset(old_contents->apex, type);
+	knot_rrset_t new_rr = node_rrset(new_contents->apex, type);
+
+	return !knot_rrset_equal(&old_rr, &new_rr, KNOT_RRSET_COMPARE_WHOLE);
+}
+
+static int sign_update(zone_t *zone, const zone_contents_t *old_contents,
+                       zone_contents_t *new_contents, changeset_t *ddns_ch,
+                       changeset_t *sec_ch)
+{
+	assert(zone != NULL);
+	assert(old_contents != NULL);
+	assert(new_contents != NULL);
+	assert(ddns_ch != NULL);
+
+	/*
+	 * Check if the UPDATE changed DNSKEYs or NSEC3PARAM.
+	 * If so, we have to sign the whole zone.
+	 */
+	int ret = KNOT_EOK;
+	uint32_t refresh_at = 0;
+	if (apex_rr_changed(old_contents, new_contents, KNOT_RRTYPE_DNSKEY) ||
+	    apex_rr_changed(old_contents, new_contents, KNOT_RRTYPE_NSEC3PARAM)) {
+		ret = knot_dnssec_zone_sign(new_contents, zone->conf,
+		                            sec_ch, KNOT_SOA_SERIAL_KEEP,
+		                            &refresh_at);
+	} else {
+		// Sign the created changeset
+		ret = knot_dnssec_sign_changeset(new_contents, zone->conf,
+		                                 ddns_ch, sec_ch,
+		                                 &refresh_at);
+	}
+	if (ret != KNOT_EOK) {
+		return ret;
+	}
+
+	// Apply DNSSEC changeset
+	ret = apply_changeset_directly(new_contents, sec_ch);
+	if (ret != KNOT_EOK) {
+		return ret;
+	}
+
+	// Merge changesets
+	ret = changeset_merge(ddns_ch, sec_ch);
+	if (ret != KNOT_EOK) {
+		update_cleanup(sec_ch);
+		return ret;
+	}
+
+	// Plan next zone resign.
+	const time_t resign_time = zone_events_get_time(zone, ZONE_EVENT_DNSSEC);
+	if (time(NULL) + refresh_at < resign_time) {
+		zone_events_schedule(zone, ZONE_EVENT_DNSSEC, refresh_at);
+	}
+
+	return KNOT_EOK;
+}
+
+static int sign_change(zone_update_t *update)
+{
+	
 }
 
 int zone_update_add(zone_update_t *update, const knot_rrset_t *rrset)

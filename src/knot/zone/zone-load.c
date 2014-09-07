@@ -128,7 +128,7 @@ int zone_load_post(zone_contents_t *contents, zone_t *zone, uint32_t *dnssec_ref
 	/* Sign zone using DNSSEC (if configured). */
 	if (conf->dnssec_enable) {
 		assert(conf->build_diffs);
-		ret = knot_dnssec_zone_sign(contents, conf, &change, KNOT_SOA_SERIAL_UPDATE,
+		ret = dnssec_zone_sign(contents, conf, &change, KNOT_SOA_SERIAL_UPDATE,
 		                            dnssec_refresh);
 		if (ret != KNOT_EOK) {
 			changeset_clear(&change);

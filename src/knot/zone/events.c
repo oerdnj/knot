@@ -498,11 +498,11 @@ static int event_dnssec(zone_t *zone)
 		              "signatures, resigning zone");
 
 		zone->flags &= ~ZONE_FORCE_RESIGN;
-		ret = knot_dnssec_zone_sign_force(zone->contents, zone->conf,
+		ret = dnssec_zone_sign_force(zone->contents, zone->conf,
 		                                  &ch, &refresh_at);
 	} else {
 		log_zone_info(zone->name, "DNSSEC, signing zone");
-		ret = knot_dnssec_zone_sign(zone->contents, zone->conf,
+		ret = dnssec_zone_sign(zone->contents, zone->conf,
 		                            &ch, KNOT_SOA_SERIAL_UPDATE,
 		                            &refresh_at);
 	}
