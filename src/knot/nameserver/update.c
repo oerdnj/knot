@@ -26,7 +26,7 @@
 #include "libknot/descriptor.h"
 #include "libknot/tsig-op.h"
 #include "knot/zone/zone.h"
-#include "knot/zone/events.h"
+#include "knot/zone/events/events.h"
 #include "knot/server/tcp-handler.h"
 #include "knot/server/udp-handler.h"
 #include "knot/nameserver/requestor.h"
@@ -51,7 +51,7 @@ static void init_qdata_from_request(struct query_data *qdata,
 
 static int sign_changeset(zone_update_t *up)
 {
-	const knot_dname_t *zone_name = up->zone->apex->owner;
+	const knot_dname_t *zone_name = up->zone->contents->apex->owner;
 
 	// Keep the original serial
 	knot_update_serial_t soa_up = KNOT_SOA_SERIAL_KEEP;
