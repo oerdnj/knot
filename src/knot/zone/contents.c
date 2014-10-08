@@ -116,21 +116,20 @@ static int zone_contents_destroy_node_rrsets_from_tree(
 /*----------------------------------------------------------------------------*/
 
 static int zone_contents_nsec3_name(const zone_contents_t *zone,
-                                         const knot_dname_t *name,
-                                         knot_dname_t **nsec3_name)
+                                    const knot_dname_t *name,
+                                    knot_dname_t **nsec3_name)
 {
 	assert(nsec3_name != NULL);
 	*nsec3_name = NULL;
 
-	const knot_nsec3_params_t *nsec3_params =
-		zone_contents_nsec3params(zone);
-
-	if (nsec3_params == NULL) {
-		return KNOT_ENSEC3PAR;
+#warning accessor here
+	const knot_rdataset_t *params =
+		node_rdataset(zone->apex, KNOT_RRTYPE_NSEC3PARAM);
+	if (params == NULL) {
+		return KNOT_EINVAL;
 	}
 
-	*nsec3_name = knot_create_nsec3_owner(name, zone->apex->owner,
-	                                      nsec3_params);
+	*nsec3_name = knot_create_nsec3_owner(name, zone->apex->owner, params);
 	if (*nsec3_name == NULL) {
 		return KNOT_ERROR;
 	}
@@ -236,9 +235,6 @@ static int adjust_nsec3_pointers(zone_node_t **tnode, void *data)
 		assert(nsec3_name);
 		zone_tree_get(args->zone->nsec3_nodes, nsec3_name, &nsec3);
 		node->nsec3_node = nsec3;
-	} else if (ret == KNOT_ENSEC3PAR) {
-		node->nsec3_node = NULL;
-		ret = KNOT_EOK;
 	}
 
 	knot_dname_free(&nsec3_name, NULL);
@@ -366,32 +362,6 @@ static int zone_contents_find_in_tree(zone_tree_t *tree,
 	*previous = prev;
 
 	return exact_match;
-}
-
-/*----------------------------------------------------------------------------*/
-
-static int knot_zc_nsec3_parameters_match(const knot_rdataset_t *rrs,
-                                          const knot_nsec3_params_t *params,
-                                          size_t rdata_pos)
-{
-	assert(rrs != NULL && params != NULL);
-
-	dbg_zone_detail("RDATA algo: %u, iterations: %u, salt length: %u, salt:"
-			" %.*s\n",
-			knot_nsec3_algorithm(rrs, rdata_pos),
-			knot_nsec3_iterations(rrs, rdata_pos),
-			knot_nsec3_salt_length(rrs, rdata_pos),
-			knot_nsec3_salt_length(rrs, rdata_pos),
-			knot_nsec3_salt(rrs, rdata_pos));
-	dbg_zone_detail("NSEC3PARAM algo: %u, iterations: %u, salt length: %u, "
-			"salt: %.*s\n",  params->algorithm, params->iterations,
-			params->salt_length, params->salt_length, params->salt);
-
-	return (knot_nsec3_algorithm(rrs, rdata_pos) == params->algorithm
-		&& knot_nsec3_iterations(rrs, rdata_pos) == params->iterations
-		&& knot_nsec3_salt_length(rrs, rdata_pos) == params->salt_length
-		&& memcmp(knot_nsec3_salt(rrs, rdata_pos), params->salt,
-		          params->salt_length) == 0);
 }
 
 /*----------------------------------------------------------------------------*/
@@ -1120,44 +1090,6 @@ int zone_contents_adjust_full(zone_contents_t *zone,
 
 	return zone_contents_adjust_nodes(zone->nodes, &adjust_arg,
 	                                       adjust_additional);
-}
-
-/*----------------------------------------------------------------------------*/
-
-int zone_contents_load_nsec3param(zone_contents_t *zone)
-{
-	if (zone == NULL || zone->apex == NULL) {
-		return KNOT_EINVAL;
-	}
-
-	const knot_rdataset_t *rrs = node_rdataset(zone->apex, KNOT_RRTYPE_NSEC3PARAM);
-	if (rrs!= NULL) {
-		int r = knot_nsec3param_from_wire(&zone->nsec3_params, rrs);
-		if (r != KNOT_EOK) {
-			dbg_zone("Failed to load NSEC3PARAM (%s).\n",
-			         knot_strerror(r));
-			return r;
-		}
-	} else {
-		memset(&zone->nsec3_params, 0, sizeof(knot_nsec3_params_t));
-	}
-
-	return KNOT_EOK;
-}
-
-/*----------------------------------------------------------------------------*/
-
-const knot_nsec3_params_t *zone_contents_nsec3params(const zone_contents_t *zone)
-{
-	if (zone == NULL) {
-		return NULL;
-	}
-
-	if (knot_is_nsec3_enabled(zone)) {
-		return &zone->nsec3_params;
-	} else {
-		return NULL;
-	}
 }
 
 /*----------------------------------------------------------------------------*/

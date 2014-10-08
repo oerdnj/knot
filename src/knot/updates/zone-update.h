@@ -27,6 +27,7 @@
 #pragma once
 
 #include "knot/updates/changesets.h"
+#include "knot/zone/zone.h"
 #include "knot/zone/contents.h"
 #include "libknot/mempattern.h"
 
@@ -39,10 +40,19 @@ typedef struct {
 	uint8_t flags;
 } zone_update_t;
 
+typedef struct {
+	zone_update_t *up;
+	hattrie_iter_t *t_it;
+	hattrie_iter_t *ch_it;
+	const zone_node_t *t_node;
+	const zone_node_t *ch_node;
+	const zone_node_t *next_n;
+} zone_update_iter_t;
+
 typedef enum {
 	UPDATE_FULL = 1 << 0,
 	UPDATE_INCREMENTAL = 1 << 1,
-	FULL_ADJUST = 1 << 2
+	UPDATE_SIGN = 1 << 2
 } zone_update_flags_t;
 
 /*!
@@ -77,4 +87,9 @@ void zone_update_clear(zone_update_t *update);
 int zone_update_add(zone_update_t *update, const knot_rrset_t *rrset);
 int zone_update_remove(zone_update_t *update, const knot_rrset_t *rrset);
 int zone_update_commit(zone_update_t *update);
+
+int zone_update_iter(zone_update_iter_t *it, zone_update_t *update);
+int zone_update_iter_nsec3(zone_update_iter_t *it, zone_update_t *update);
+int zone_update_iter_next(zone_update_iter_t *it);
+const zone_node_t *zone_update_iter_val(zone_update_iter_t *it);
 

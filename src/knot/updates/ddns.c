@@ -189,7 +189,7 @@ static int process_prereq(const knot_rrset_t *rrset, uint16_t qclass,
 		return KNOT_EMALF;
 	}
 
-	if (!knot_dname_in(update->zone->apex->owner, rrset->owner)) {
+	if (!knot_dname_in(update->zone->name, rrset->owner)) {
 		*rcode = KNOT_RCODE_NOTZONE;
 		return KNOT_EOUTOFZONE;
 	}
@@ -919,7 +919,7 @@ int ddns_process_update(const zone_t *zone, const knot_pkt_t *query,
 		return KNOT_EINVAL;
 	}
 
-	changeset_t *changeset = update->change;
+	changeset_t *changeset = &update->change;
 
 	if (changeset->soa_from == NULL) {
 		// Copy base SOA RR.

@@ -28,69 +28,27 @@
 
 #pragma once
 
-#include "knot/updates/changesets.h"
-#include "knot/zone/zone.h"
+#include "knot/updates/zone-update.h"
 #include "knot/zone/contents.h"
 #include "knot/dnssec/zone-keys.h"
 #include "libknot/dnssec/policy.h"
-
-typedef struct type_node {
-	node_t n;
-	uint16_t type;
-} type_node_t;
-
-typedef struct signed_info {
-	knot_dname_t *dname;
-	knot_dname_t *hashed_dname;
-	list_t *type_list;
-} signed_info_t;
 
 /*!
  * \brief Update zone signatures and store performed changes in changeset.
  *
  * Updates RRSIGs, NSEC(3)s, and DNSKEYs.
  *
- * \param zone        Zone to be signed.
+ * \param up          Zone update structure
  * \param zone_keys   Zone keys.
  * \param policy      DNSSEC policy.
- * \param changeset   Changeset to be updated.
  * \param refresh_at  Pointer to refresh time when the zone should be resigned.
  *
  * \return Error code, KNOT_EOK if successful.
  */
-int knot_zone_sign(const zone_contents_t *zone,
+int knot_zone_sign(zone_update_t *up,
                    const knot_zone_keys_t *zone_keys,
                    const knot_dnssec_policy_t *policy,
-                   changeset_t *out_ch, uint32_t *refresh_at);
-
-/*!
- * \brief Update and sign SOA and store performed changes in changeset.
- *
- * \param zone       Zone including SOA to be updated.
- * \param zone_keys  Zone keys.
- * \param policy     DNSSEC policy.
- * \param changeset  Changeset to be updated.
- *
- * \return Error code, KNOT_EOK if successful.
- */
-int knot_zone_sign_update_soa(const knot_rrset_t *soa, const knot_rrset_t *rrsigs,
-                              const knot_zone_keys_t *zone_keys,
-                              const knot_dnssec_policy_t *policy,
-                              uint32_t new_serial, changeset_t *changeset);
-
-/*!
- * \brief Check if zone SOA signatures are expired.
- *
- * \param zone       Zone to be signed.
- * \param zone_keys  Zone keys.
- * \param policy     DNSSEC policy.
- * \param changeset  Changeset to be updated.
- *
- * \return True if zone SOA signatures need update, false othewise.
- */
-bool knot_zone_sign_soa_expired(const zone_contents_t *zone,
-                                const knot_zone_keys_t *zone_keys,
-                                const knot_dnssec_policy_t *policy);
+                   uint32_t *refresh_at);
 
 /*!
  * \brief Sign changeset created by DDNS or zone-diff.
@@ -103,24 +61,10 @@ bool knot_zone_sign_soa_expired(const zone_contents_t *zone,
  *
  * \return Error code, KNOT_EOK if successful.
  */
-int knot_zone_sign_changeset(const zone_contents_t *zone,
-                             const changeset_t *in_ch,
-                             changeset_t *out_ch,
+int knot_zone_sign_changeset(zone_update_t *up,
                              const knot_zone_keys_t *zone_keys,
-                             const knot_dnssec_policy_t *policy);
-
-/*!
- * \brief Sign NSEC/NSEC3 nodes in changeset and update the changeset.
- *
- * \param zone_keys  Zone keys.
- * \param policy     DNSSEC policy.
- * \param changeset  Changeset to be updated.
- *
- * \return Error code, KNOT_EOK if successful.
- */
-int knot_zone_sign_nsecs_in_changeset(const knot_zone_keys_t *zone_keys,
-                                      const knot_dnssec_policy_t *policy,
-                                      changeset_t *changeset);
+                             const knot_dnssec_policy_t *policy,
+                             uint32_t *refresh_at);
 
 /*!
  * \brief Checks whether RRSet in a node has to be signed. Will not return
@@ -129,7 +73,6 @@ int knot_zone_sign_nsecs_in_changeset(const knot_zone_keys_t *zone_keys,
  *
  * \param node         Node containing the RRSet.
  * \param rrset        RRSet we are checking for.
- * \param table        Optional hat trie with already signed RRs.
  * \param should_sign  Set to true if RR should be signed, false otherwise.
  *
  * \return KNOT_E*

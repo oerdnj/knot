@@ -15,6 +15,8 @@
  */
 
 #include "knot/updates/zone-update.h"
+#include "knot/updates/changesets.h"
+#include "knot/updates/apply.h"
 #include "common-knot/lists.h"
 #include "common/mempool.h"
 
@@ -113,7 +115,7 @@ static zone_node_t *node_deep_copy(const zone_node_t *node, mm_ctx_t *mm)
 	return synth_node;
 }
 
-static bool zone_empty(zone)
+static bool zone_empty(const zone_contents_t *zone)
 {
 	return zone->nsec3_nodes == NULL && hattrie_weight(zone->nodes) == 1 &&
 	       zone->apex->rrset_count == 0;
@@ -164,9 +166,9 @@ const zone_node_t *zone_update_get_node(zone_update_t *update, const knot_dname_
 	}
 	
 	const zone_node_t *add_node =
-		zone_contents_find_node(update->change->add, dname);
+		zone_contents_find_node(update->change.add, dname);
 	const zone_node_t *rem_node =
-		zone_contents_find_node(update->change->remove, dname);
+		zone_contents_find_node(update->change.remove, dname);
 
 	const bool have_change = !node_empty(add_node) || !node_empty(rem_node);
 	if (!have_change) {
@@ -273,18 +275,13 @@ static int sign_update(zone_t *zone, const zone_contents_t *old_contents,
 	return KNOT_EOK;
 }
 
-static int sign_change(zone_update_t *update)
-{
-	
-}
-
 int zone_update_add(zone_update_t *update, const knot_rrset_t *rrset)
 {
 	if (update->flags & UPDATE_INCREMENTAL) {
-		return changeset_add_rrset(update->change, rrset);
+		return changeset_add_rrset(&update->change, rrset);
 	} else if (update->flags & UPDATE_FULL) {
 		zone_node_t *n;
-		return zone_contents_add_rr(update->zone, rrset, &n);
+		return zone_contents_add_rr(update->c, rrset, &n);
 	} else {
 		return KNOT_EINVAL;
 	}
@@ -293,7 +290,7 @@ int zone_update_add(zone_update_t *update, const knot_rrset_t *rrset)
 int zone_update_remove(zone_update_t *update, const knot_rrset_t *rrset)
 {
 	if (update->flags & UPDATE_INCREMENTAL) {
-		return changeset_rem_rrset(update->change, rrset);
+		return changeset_rem_rrset(&update->change, rrset);
 	} else {
 		// Removing from zone during creation does not make sense.
 		return KNOT_EINVAL;
@@ -310,8 +307,7 @@ int zone_update_commit(zone_update_t *update)
 	}
 	
 	if (update->flags & UPDATE_FULL) {
-		zone_contents_t *old_contents =
-		                zone_switch_contents(zone, update->c);
+		zone_contents_t *old_contents = zone_switch_contents(update->zone, update->c);
 		synchronize_rcu();
 		
 		zone_contents_deep_free(&old_contents);
@@ -323,25 +319,156 @@ int zone_update_commit(zone_update_t *update)
 		}
 		
 		zone_contents_t *new_contents;
-		int ret = apply_changeset(update->zone, update->change, &new_contents);
+		int ret = apply_changeset(update->zone, &update->change, &new_contents);
 		if (ret != KNOT_EOK) {
 			return ret;
 		}
-	
-		ret = zone_change_store(update->zone, update->change);
+
+		ret = zone_change_store(update->zone, &update->change);
 		if (ret != KNOT_EOK) {
 			update_rollback(&update->change);
 			update_free_zone(&new_contents);
 			return ret;
 		}
-	
-		zone_contents_t *old_contents = zone_switch_contents(update->zone,
-		                                                     new_contents);
+
+		zone_contents_t *old_contents =
+			zone_switch_contents(update->zone, new_contents);
 		synchronize_rcu();
 		
 		update_free_zone(&old_contents);
 		update_cleanup(&update->change);
+		
+		return KNOT_EOK;
 	} else {
 		return KNOT_EINVAL;
 	}
 }
+
+#define init_iter_with_tree(it, update, tree) \
+	memset(it, 0, sizeof(*it)); \
+	it->up = update; \
+	it->t_it = hattrie_iter_begin(update->zone->contents->tree, true); \
+	if (it->t_it == NULL) { \
+		return KNOT_ENOMEM; \
+	} \
+	if (update->flags & UPDATE_INCREMENTAL) { \
+		it->ch_it = hattrie_iter_begin(update->change.add->tree, true); \
+		if (it->ch_it == NULL) { \
+			hattrie_iter_free(it->t_it); \
+			return KNOT_ENOMEM; \
+		} \
+	} else { \
+		it->ch_it = NULL; \
+	} \
+	return KNOT_EOK;
+
+int zone_update_iter(zone_update_iter_t *it, zone_update_t *update)
+{
+	init_iter_with_tree(it, update, nodes);
+}
+
+int zone_update_iter_nsec3(zone_update_iter_t *it, zone_update_t *update)
+{
+	init_iter_with_tree(it, update, nsec3_nodes);
+}
+
+static int iter_get_added_node(zone_update_iter_t *it)
+{
+	if (hattrie_iter_finished(it->ch_it)) {
+		hattrie_iter_free(it->ch_it);
+		it->ch_it = NULL;
+		return KNOT_ENOENT;
+	}
+
+	hattrie_iter_next(it->t_it);
+	it->ch_node = (zone_node_t *)(*hattrie_iter_val(it->t_it));
+
+	return KNOT_EOK;
+}
+
+static int iter_get_synth_node(zone_update_iter_t *it)
+{
+	if (hattrie_iter_finished(it->t_it)) {
+		hattrie_iter_free(it->t_it);
+		it->ch_it = NULL;
+		return KNOT_ENOENT;
+	}
+
+	if (it->t_node) {
+		// Don't get next for very first data.
+		hattrie_iter_next(it->t_it);
+	}
+
+	const zone_node_t *n = (zone_node_t *)(*hattrie_iter_val(it->t_it));
+	it->t_node = zone_update_get_node(it->up, n->owner);
+	if (it->t_node == NULL) {
+		return KNOT_ENOMEM;
+	}
+
+	return KNOT_EOK;
+}
+
+static void select_smaller_node(zone_update_iter_t *it)
+{
+	if (it->t_node && it->ch_node) {
+		// Choose 'smaller' node to return.
+		if (knot_dname_cmp(it->t_node->owner, it->ch_node->owner) <= 0) {
+			// Return the synthesized node.
+			it->next_n = it->t_node;
+			it->t_node = NULL;
+		} else {
+			// Return the new node.
+			it->next_n = it->ch_node;
+			it->ch_node = NULL;
+		}
+	}
+
+	// Return the remaining node.
+	if (it->t_node) {
+		it->next_n = it->t_node;
+		it->t_node = NULL;
+	} else {
+		assert(it->ch_node);
+		it->next_n = it->ch_node;
+		it->ch_node = NULL;
+	}
+}
+
+int zone_update_iter_next(zone_update_iter_t *it)
+{
+	if (it == NULL) {
+		return KNOT_EINVAL;
+	}
+
+	// Get nodes from both iterators if needed.
+	if (it->t_it && it->t_node == NULL) {
+		int ret = iter_get_synth_node(it);
+		if (ret != KNOT_EOK) {
+			if (ret != KNOT_ENOENT) {
+				return ret;
+			}
+		}
+	}
+
+	if (it->ch_it && it->ch_node == NULL) {
+		int ret = iter_get_added_node(it);
+		if (ret != KNOT_EOK) {
+			if (ret != KNOT_ENOENT) {
+				return ret;
+			}
+		}
+	}
+
+	select_smaller_node(it);
+	return KNOT_EOK;
+}
+
+const zone_node_t *zone_update_iter_val(zone_update_iter_t *it)
+{
+	if (it) {
+		return it->next_n;
+	} else {
+		return NULL;
+	}
+}
+

@@ -20,7 +20,7 @@
 #include "common/mempool.h"
 #include "knot/server/udp-handler.h"
 #include "knot/server/tcp-handler.h"
-#include "knot/updates/changesets.h"
+#include "knot/updates/zone-update.h"
 #include "knot/dnssec/zone-events.h"
 #include "knot/zone/timers.h"
 #include "knot/zone/zone-load.h"
@@ -464,10 +464,12 @@ int event_dnssec(zone_t *zone)
 {
 	assert(zone);
 
-	changeset_t ch;
-	int ret = changeset_init(&ch, zone->name);
+	// Create zone update structure
+
+	zone_update_t up;
+	int ret = zone_update_init(&up, zone, UPDATE_INCREMENTAL);
 	if (ret != KNOT_EOK) {
-		goto done;
+		return ret;
 	}
 
 	uint32_t refresh_at = time(NULL);
@@ -476,13 +478,10 @@ int event_dnssec(zone_t *zone)
 		              "signatures, resigning zone");
 
 		zone->flags &= ~ZONE_FORCE_RESIGN;
-		ret = dnssec_zone_sign_force(zone->contents, zone->conf,
-		                                  &ch, &refresh_at);
+		ret = dnssec_zone_sign_force(&up, &refresh_at);
 	} else {
 		log_zone_info(zone->name, "DNSSEC, signing zone");
-		ret = dnssec_zone_sign(zone->contents, zone->conf,
-		                            &ch, KNOT_SOA_SERIAL_UPDATE,
-		                            &refresh_at);
+		ret = dnssec_zone_sign(&up, &refresh_at);
 	}
 	if (ret != KNOT_EOK) {
 		goto done;

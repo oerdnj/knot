@@ -339,16 +339,16 @@ static int full_adjust(zone_contents_t *zone)
 
 static bool nsec3param_changed(const zone_update_t *up)
 {
-	return node_rrtype_exists(up->change->add->apex, KNOT_RRTYPE_NSEC3PARAM) ||
-	       node_rrtype_exists(up->change->remove->apex, KNOT_RRTYPE_NSEC3PARAM);
+	return node_rrtype_exists(up->change.add->apex, KNOT_RRTYPE_NSEC3PARAM) ||
+	       node_rrtype_exists(up->change.remove->apex, KNOT_RRTYPE_NSEC3PARAM);
 }
 
 /* ------------------------------- API -------------------------------------- */
 
 int zone_adjust(zone_update_t *up)
 {
-	if (up->change && !nsec3param_changed(up)) {
-		int ret = partial_adjust(up->zone, up->change);
+	if (!nsec3param_changed(up)) {
+		int ret = partial_adjust(up->zone, &up->change);
 		if (ret == FULL_ADJUST_FALLBACK) {
 			ret = full_adjust(up->zone);
 		}

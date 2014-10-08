@@ -32,13 +32,10 @@
 /*!
  * \brief Creates new NSEC3 chain, add differences from current into a changeset.
  *
- * \param zone       Zone to be checked.
  * \param ttl        TTL for new records.
- * \param changeset  Changeset to store changes into.
  *
  * \return KNOT_E*
  */
-int knot_nsec3_create_chain(const zone_contents_t *zone, uint32_t ttl,
-                            changeset_t *changeset);
+int knot_nsec3_create_chain(zone_update_t *up, uint32_t ttl);
 
 /*! @} */

@@ -418,52 +418,6 @@ static int prepare_zone_copy(zone_contents_t *old_contents,
 
 /* ------------------------------- API -------------------------------------- */
 
-int apply_changesets(zone_t *zone, list_t *chsets, zone_contents_t **new_contents)
-{
-	if (zone == NULL || chsets == NULL || EMPTY_LIST(*chsets) || new_contents == NULL) {
-		return KNOT_EINVAL;
-	}
-
-	zone_contents_t *old_contents = zone->contents;
-	if (!old_contents) {
-		return KNOT_EINVAL;
-	}
-
-	zone_contents_t *contents_copy = NULL;
-	int ret = prepare_zone_copy(old_contents, &contents_copy);
-	if (ret != KNOT_EOK) {
-		return ret;
-	}
-
-	/*
-	 * Apply the changesets.
-	 */
-	changeset_t *set = NULL;
-	const bool master = (zone_master(zone) == NULL);
-	WALK_LIST(set, *chsets) {
-		ret = apply_single(contents_copy, set, master);
-		if (ret != KNOT_EOK) {
-			updates_rollback(chsets);
-			update_free_zone(&contents_copy);
-			return ret;
-		}
-		
-		zone_update_t up;
-		zone_update_init(&up, contents_copy, set);
-		ret = zone_adjust(&up);
-		if (ret != KNOT_EOK) {
-			updates_rollback(chsets);
-			update_free_zone(&contents_copy);
-			return ret;
-		}
-	}
-
-	assert(contents_copy->apex != NULL);
-	*new_contents = contents_copy;
-
-	return KNOT_EOK;
-}
-
 int apply_changeset(zone_t *zone, changeset_t *change, zone_contents_t **new_contents)
 {
 	if (zone == NULL || change == NULL || new_contents == NULL) {
@@ -489,43 +443,10 @@ int apply_changeset(zone_t *zone, changeset_t *change, zone_contents_t **new_con
 		return ret;
 	}
 	
-	zone_update_t up;
-	zone_update_init(&up, contents_copy, change);
-	ret = zone_adjust(&up);
-	if (ret != KNOT_EOK) {
-		update_rollback(change);
-		update_free_zone(&contents_copy);
-		return ret;
-	}
+#warning do adjust
 	
 	*new_contents = contents_copy;
 	
-	return KNOT_EOK;
-}
-
-int apply_changesets_directly(zone_contents_t *contents, list_t *chsets)
-{
-	if (contents == NULL || chsets == NULL) {
-		return KNOT_EINVAL;
-	}
-
-	changeset_t *set = NULL;
-	WALK_LIST(set, *chsets) {
-		const bool master = true; // Only DNSSEC changesets are applied directly.
-		int ret = apply_single(contents, set, master);
-		if (ret != KNOT_EOK) {
-			updates_cleanup(chsets);
-			return ret;
-		}
-		zone_update_t up;
-		zone_update_init(&up, contents, set);
-		ret = zone_adjust(&up);
-		if (ret != KNOT_EOK) {
-			updates_cleanup(chsets);
-			return ret;
-		}
-	}
-
 	return KNOT_EOK;
 }
 
@@ -542,14 +463,7 @@ int apply_changeset_directly(zone_contents_t *contents, changeset_t *ch)
 		return ret;
 	}
 	
-	zone_update_t up;
-	zone_update_init(&up, contents, ch);
-	ret = zone_adjust(&up);
-	if (ret != KNOT_EOK) {
-		update_cleanup(ch);
-		return ret;
-	}
-	
+#warning do adjust
 	return KNOT_EOK;
 }
 
@@ -565,18 +479,6 @@ void update_cleanup(changeset_t *change)
 	}
 }
 
-void updates_cleanup(list_t *chgs)
-{
-	if (chgs == NULL || EMPTY_LIST(*chgs)) {
-		return;
-	}
-
-	changeset_t *change = NULL;
-	WALK_LIST(change, *chgs) {
-		update_cleanup(change);
-	};
-}
-
 void update_rollback(changeset_t *change)
 {
 	if (change) {
@@ -586,16 +488,6 @@ void update_rollback(changeset_t *change)
 		// Keep old RR data
 		ptrlist_free(&change->old_data, NULL);
 		init_list(&change->old_data);
-	}
-}
-
-void updates_rollback(list_t *chgs)
-{
-	if (chgs != NULL && !EMPTY_LIST(*chgs)) {
-		changeset_t *change = NULL;
-		WALK_LIST(change, *chgs) {
-			update_rollback(change);
-		}
 	}
 }
 

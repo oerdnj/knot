@@ -51,78 +51,80 @@ static void init_qdata_from_request(struct query_data *qdata,
 
 static int sign_changeset(zone_update_t *up)
 {
-	const knot_dname_t *zone_name = up->zone->contents->apex->owner;
+#warning figure this out
+//	const zone_contents_t *cont = up->zone->contents;
+//	const knot_dname_t *zone_name = up->zone->contents->apex->owner;
 
-	// Keep the original serial
-	knot_update_serial_t soa_up = KNOT_SOA_SERIAL_KEEP;
-	uint32_t new_serial = zone_contents_serial(up->zone);
+//	// Keep the original serial
+//	knot_update_serial_t soa_up = KNOT_SOA_SERIAL_KEEP;
+//#warning use API for this
+//	uint32_t new_serial = zone_contents_serial(cont);
 
-	// Init needed structures
-	knot_zone_keys_t zone_keys;
-	knot_init_zone_keys(&zone_keys);
-	knot_dnssec_policy_t policy = { '\0' };
-	int ret = init_dnssec_structs(zone, zone_config, &zone_keys, &policy,
-	                              soa_up, false);
-	if (ret != KNOT_EOK) {
-		return ret;
-	}
+//	// Init needed structures
+//	knot_zone_keys_t zone_keys;
+//	knot_init_zone_keys(&zone_keys);
+//	knot_dnssec_policy_t policy = { '\0' };
+//	int ret = init_dnssec_structs(cont, up->zone->conf, &zone_keys, &policy,
+//	                              soa_up, false);
+//	if (ret != KNOT_EOK) {
+//		return ret;
+//	}
 
-	// Sign added and removed RRSets in changeset
-	ret = knot_zone_sign_changeset(zone, in_ch, out_ch,
-	                               &zone_keys, &policy);
-	if (ret != KNOT_EOK) {
-		log_zone_error(zone_name, "DNSSEC, failed to sign changeset (%s)",
-		               knot_strerror(ret));
-		knot_free_zone_keys(&zone_keys);
-		return ret;
-	}
+//	// Sign added and removed RRSets in changeset
+//	ret = knot_zone_sign_changeset(zone, in_ch, out_ch,
+//	                               &zone_keys, &policy);
+//	if (ret != KNOT_EOK) {
+//		log_zone_error(zone_name, "DNSSEC, failed to sign changeset (%s)",
+//		               knot_strerror(ret));
+//		knot_free_zone_keys(&zone_keys);
+//		return ret;
+//	}
 
-	// Create NSEC(3) chain
-	ret = knot_zone_create_nsec_chain(zone, out_ch, &zone_keys, &policy);
-	if (ret != KNOT_EOK) {
-		log_zone_error(zone_name, "DNSSEC, failed to create NSEC(3) chain (%s)",
-		               knot_strerror(ret));
-		knot_free_zone_keys(&zone_keys);
-		return ret;
-	}
+//	// Create NSEC(3) chain
+//	ret = knot_zone_create_nsec_chain(zone, out_ch, &zone_keys, &policy);
+//	if (ret != KNOT_EOK) {
+//		log_zone_error(zone_name, "DNSSEC, failed to create NSEC(3) chain (%s)",
+//		               knot_strerror(ret));
+//		knot_free_zone_keys(&zone_keys);
+//		return ret;
+//	}
 
-	// Sign added NSEC(3)
-	ret = knot_zone_sign_nsecs_in_changeset(&zone_keys, &policy,
-	                                        out_ch);
-	if (ret != KNOT_EOK) {
-		log_zone_error(zone_name, "DNSSEC, failed to sign changeset (%s)",
-		               knot_strerror(ret));
-		knot_free_zone_keys(&zone_keys);
-		return ret;
-	}
+//	// Sign added NSEC(3)
+//	ret = knot_zone_sign_nsecs_in_changeset(&zone_keys, &policy,
+//	                                        out_ch);
+//	if (ret != KNOT_EOK) {
+//		log_zone_error(zone_name, "DNSSEC, failed to sign changeset (%s)",
+//		               knot_strerror(ret));
+//		knot_free_zone_keys(&zone_keys);
+//		return ret;
+//	}
 
-	// Update SOA RRSIGs
-	knot_rrset_t soa = node_rrset(zone->apex, KNOT_RRTYPE_SOA);
-	knot_rrset_t rrsigs = node_rrset(zone->apex, KNOT_RRTYPE_RRSIG);
-	ret = knot_zone_sign_update_soa(&soa, &rrsigs, &zone_keys, &policy,
-	                                new_serial, out_ch);
-	if (ret != KNOT_EOK) {
-		log_zone_error(zone_name, "DNSSEC, failed to sign SOA record (%s)",
-		               knot_strerror(ret));
-		knot_free_zone_keys(&zone_keys);
-		return ret;
-	}
+//	// Update SOA RRSIGs
+//	knot_rrset_t soa = node_rrset(zone->apex, KNOT_RRTYPE_SOA);
+//	knot_rrset_t rrsigs = node_rrset(zone->apex, KNOT_RRTYPE_RRSIG);
+//	ret = knot_zone_sign_update_soa(&soa, &rrsigs, &zone_keys, &policy,
+//	                                new_serial, out_ch);
+//	if (ret != KNOT_EOK) {
+//		log_zone_error(zone_name, "DNSSEC, failed to sign SOA record (%s)",
+//		               knot_strerror(ret));
+//		knot_free_zone_keys(&zone_keys);
+//		return ret;
+//	}
 
-	knot_free_zone_keys(&zone_keys);
+//	knot_free_zone_keys(&zone_keys);
 
-	*refresh_at = policy.refresh_before; // only new signatures are made
+//	*refresh_at = policy.refresh_before; // only new signatures are made
 
-	return KNOT_EOK;
+//	return KNOT_EOK;
 }
 
-static bool apex_rr_changed(const zone_contents_t *old_contents,
-                            const zone_contents_t *new_contents,
-                            uint16_t type)
+static bool apex_rr_changed(zone_update_t *up, uint16_t type)
 {
-	knot_rrset_t old_rr = node_rrset(old_contents->apex, type);
-	knot_rrset_t new_rr = node_rrset(new_contents->apex, type);
+#warning get nodes and compare
+//	knot_rrset_t old_rr = node_rrset(old_contents->apex, type);
+//	knot_rrset_t new_rr = node_rrset(new_contents->apex, type);
 
-	return !knot_rrset_equal(&old_rr, &new_rr, KNOT_RRSET_COMPARE_WHOLE);
+//	return !knot_rrset_equal(&old_rr, &new_rr, KNOT_RRSET_COMPARE_WHOLE);
 }
 
 static int sign_update(zone_update_t *up)
@@ -148,10 +150,12 @@ static int sign_update(zone_update_t *up)
 	}
 
 	// Plan next zone resign.
-	const time_t resign_time = zone_events_get_time(zone, ZONE_EVENT_DNSSEC);
-	if (time(NULL) + refresh_at < resign_time) {
-		zone_events_schedule(zone, ZONE_EVENT_DNSSEC, refresh_at);
-	}
+	assert(0);
+//	const time_t resign_time = zone_events_get_time(zone, ZONE_EVENT_DNSSEC);
+//	if (time(NULL) + refresh_at < resign_time) {
+		assert(0);
+//		zone_events_schedule(zone, ZONE_EVENT_DNSSEC, refresh_at);
+//	}
 
 	return KNOT_EOK;
 }
@@ -168,7 +172,7 @@ static int check_prereqs(struct request_data *request,
 		assert(rcode != KNOT_RCODE_NOERROR);
 		knot_wire_set_rcode(request->resp->wire, rcode);
 		return ret;
-	}
+	};
 
 	return KNOT_EOK;
 }
@@ -267,7 +271,6 @@ static int process_normal(zone_t *zone, list_t *requests)
 		zone_update_clear(&up);
 		return ret;
 	}
-	assert(new_contents);
 
 	// Sign the update.
 	changeset_t sec_ch;
@@ -277,23 +280,24 @@ static int process_normal(zone_t *zone, list_t *requests)
 			set_rcodes(requests, KNOT_RCODE_SERVFAIL);
 			return ret;
 		}
-		ret = sign_update(zone, zone->contents, new_contents, &ddns_ch,
-		                  &sec_ch);
+		assert(0);
+//		ret = sign_update(zone, zone->contents, new_contents, &ddns_ch,
+//		                  &sec_ch);
 		if (ret != KNOT_EOK) {
-			update_rollback(&ddns_ch);
-			update_free_zone(&new_contents);
-			changeset_clear(&ddns_ch);
+//			update_rollback(&ddns_ch);
+//			update_free_zone(&new_contents);
+//			changeset_clear(&ddns_ch);
 			set_rcodes(requests, KNOT_RCODE_SERVFAIL);
 			return ret;
 		}
 	}
 
 	// Write changes to journal if all went well. (DNSSEC merged)
-	ret = zone_change_store(zone, &ddns_ch);
+//ret = zone_change_store(zone, &ddns_ch);
 	if (ret != KNOT_EOK) {
-		update_rollback(&ddns_ch);
-		update_free_zone(&new_contents);
-		changeset_clear(&ddns_ch);
+//		update_rollback(&ddns_ch);
+//		update_free_zone(&new_contents);
+//		changeset_clear(&ddns_ch);
 		if (zone->conf->dnssec_enable) {
 			changeset_clear(&sec_ch);
 		}
@@ -302,7 +306,7 @@ static int process_normal(zone_t *zone, list_t *requests)
 	}
 
 	// Switch zone contents.
-	zone_contents_t *old_contents = zone_switch_contents(zone, new_contents);
+//	zone_contents_t *old_contents = zone_switch_contents(zone, new_contents);
 	synchronize_rcu();
 
 	// Clear DNSSEC changes
@@ -312,10 +316,10 @@ static int process_normal(zone_t *zone, list_t *requests)
 	}
 
 	// Clear obsolete zone contents
-	update_free_zone(&old_contents);
+//	update_free_zone(&old_contents);
 
-	update_cleanup(&ddns_ch);
-	changeset_clear(&ddns_ch);
+//	update_cleanup(&ddns_ch);
+//	changeset_clear(&ddns_ch);
 
 	/* Sync zonefile immediately if configured. */
 	if (zone->conf->dbsync_timeout == 0) {
