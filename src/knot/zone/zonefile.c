@@ -38,6 +38,7 @@
 #include "knot/zone/adjust.h"
 #include "libknot/rdata.h"
 #include "knot/zone/zone-dump.h"
+#include "libknot/rrtype/naptr.h"
 #include "knot/updates/zone-update.h"
 
 #define ERROR(zone, fmt...) log_zone_error(zone, "zone loader, " fmt)
@@ -160,7 +161,6 @@ static void scanner_process(zs_scanner_t *scanner)
 		zc->ret = KNOT_ENOMEM;
 		return;
 	}
-	knot_dname_to_lower(owner);
 
 	knot_rrset_t rr;
 	knot_rrset_init(&rr, owner, scanner->r_type, scanner->r_class);
@@ -171,6 +171,14 @@ static void scanner_process(zs_scanner_t *scanner)
 		ERROR(zname, "failed to add RDATA, file '%s', line %"PRIu64", owner '%s'",
 		      scanner->file.name, scanner->line_counter, rr_name);
 		free(rr_name);
+		knot_dname_free(&owner, NULL);
+		zc->ret = ret;
+		return;
+	}
+
+	/* Convert RDATA dnames to lowercase before adding to zone. */
+	ret = knot_rrset_rr_to_canonical(&rr);
+	if (ret != KNOT_EOK) {
 		knot_dname_free(&owner, NULL);
 		zc->ret = ret;
 		return;

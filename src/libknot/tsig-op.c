@@ -460,13 +460,13 @@ int knot_tsig_sign(uint8_t *msg, size_t *msg_len,
 
 	/* Create rdata for TSIG RR. */
 	uint16_t rdata_rcode = 0;
-	if (tsig_rcode == KNOT_RCODE_BADTIME)
+	if (tsig_rcode == KNOT_TSIG_ERR_BADTIME)
 		rdata_rcode = tsig_rcode;
 	tsig_create_rdata(tmp_tsig, tsig_alg_to_dname(key->algorithm),
 	                  knot_tsig_digest_length(key->algorithm), rdata_rcode);
 
 	/* Distinguish BADTIME response. */
-	if (tsig_rcode == KNOT_RCODE_BADTIME) {
+	if (tsig_rcode == KNOT_TSIG_ERR_BADTIME) {
 		/* Set client's time signed into the time signed field. */
 		tsig_rdata_set_time_signed(tmp_tsig, request_time_signed);
 
@@ -511,7 +511,7 @@ int knot_tsig_sign(uint8_t *msg, size_t *msg_len,
 	/* Write RRSet to wire */
 
 	ret = knot_rrset_to_wire(tmp_tsig, msg + *msg_len,
-	                         msg_max_len - *msg_len, NULL, 0);
+	                         msg_max_len - *msg_len, NULL);
 	if (ret < 0) {
 		dbg_tsig("TSIG: rrset_to_wire = %s\n", knot_strerror(ret));
 		*digest_len = 0;
@@ -619,7 +619,7 @@ int knot_tsig_sign_next(uint8_t *msg, size_t *msg_len, size_t msg_max_len,
 	              msg_max_len, *msg_len);
 
 	ret = knot_rrset_to_wire(tmp_tsig, msg + *msg_len,
-	                         msg_max_len - *msg_len, NULL, 0);
+	                         msg_max_len - *msg_len, NULL);
 	if (ret < 0) {
 		knot_rrset_free(&tmp_tsig, NULL);
 		*digest_len = 0;
@@ -799,7 +799,7 @@ int knot_tsig_add(uint8_t *msg, size_t *msg_len, size_t msg_max_len,
 		return KNOT_ENOMEM;
 	}
 
-	assert(tsig_rcode != KNOT_RCODE_BADTIME);
+	assert(tsig_rcode != KNOT_TSIG_ERR_BADTIME);
 	tsig_create_rdata(tmp_tsig, tsig_rdata_alg_name(tsig_rr), 0, tsig_rcode);
 	tsig_rdata_set_time_signed(tmp_tsig, tsig_rdata_time_signed(tsig_rr));
 
@@ -828,7 +828,7 @@ int knot_tsig_append(uint8_t *msg, size_t *msg_len, size_t msg_max_len,
 {
 	/* Write RRSet to wire */
 	int ret = knot_rrset_to_wire(tsig_rr, msg + *msg_len,
-	                             msg_max_len - *msg_len, NULL, 0);
+	                             msg_max_len - *msg_len, NULL);
 	if (ret < 0) {
 		dbg_tsig("TSIG: rrset_to_wire = %s\n", knot_strerror(ret));
 		return ret;

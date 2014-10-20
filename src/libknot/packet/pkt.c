@@ -500,7 +500,7 @@ int knot_pkt_put(knot_pkt_t *pkt, uint16_t compr_hint, const knot_rrset_t *rr,
 	                                        compr.wire);
 
 	/* Write RRSet to wireformat. */
-	int ret = knot_rrset_to_wire(rr, pos, maxlen, &compr, 0);
+	int ret = knot_rrset_to_wire(rr, pos, maxlen, &compr);
 	if (ret < 0) {
 		dbg_packet("%s: rr_to_wire = %s\n,", __func__, knot_strerror(ret));
 
@@ -758,4 +758,20 @@ int knot_pkt_parse_payload(knot_pkt_t *pkt, unsigned flags)
 	}
 
 	return KNOT_EOK;
+}
+
+uint16_t knot_pkt_get_ext_rcode(const knot_pkt_t *pkt)
+{
+	if (pkt == NULL) {
+		return 0;
+	}
+
+	uint8_t rcode = knot_wire_get_rcode(pkt->wire);
+
+	if (pkt->opt_rr) {
+		uint8_t opt_rcode = knot_edns_get_ext_rcode(pkt->opt_rr);
+		return knot_edns_whole_rcode(opt_rcode, rcode);
+	} else {
+		return rcode;
+	}
 }
