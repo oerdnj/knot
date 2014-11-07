@@ -21,10 +21,10 @@
 #include <time.h>
 
 #include "common/debug.h"
+#include "common/macros.h"
 #include "libknot/descriptor.h"
 #include "libknot/errcode.h"
-#include "common-knot/hattrie/hat-trie.h"
-#include "libknot/common.h"
+#include "common/trie/hat-trie.h"
 #include "libknot/dname.h"
 #include "libknot/rrset.h"
 #include "libknot/dnssec/key.h"

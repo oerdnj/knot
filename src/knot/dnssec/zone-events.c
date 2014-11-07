@@ -34,9 +34,6 @@ static int zone_sign(zone_update_t *up, const bool force, uint32_t *refresh_at)
 
 	log_zone_info(up->zone->name, "DNSSEC, signing started");
 
-	dbg_dnssec_verb("changeset empty before generating NSEC chain: %d\n",
-	                changeset_empty(out_ch));
-
 	// Init needed structs
 	knot_zone_keys_t zone_keys;
 	knot_init_zone_keys(&zone_keys);

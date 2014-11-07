@@ -29,14 +29,14 @@
 #include <stdbool.h>
 #include <stdio.h>
 
-#include "knot/zone/zone.h"
+#include "knot/updates/zone-update.h"
 #include "knot/zone/semantic-check.h"
 #include "zscanner/scanner.h"
 /*!
  * \brief Zone creator structure.
  */
 typedef struct zcreator {
-	zone_contents_t *z;  /*!< Created zone. */
+	zone_update_t *up;        /*!< Zone update structure. */
 	bool master;              /*!< Master flag. True if server is a primary
 	                               master for the zone. */
 	int ret;                  /*!< Return value. */

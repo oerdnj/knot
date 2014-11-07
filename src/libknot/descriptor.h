@@ -161,7 +161,7 @@ typedef struct {
 	const int  block_types[KNOT_MAX_RDATA_BLOCKS];
 	/*!< RR type name. */
 	const char *type_name;
-} rdata_descriptor_t;
+} knot_rdata_descriptor_t;
 
 /*!
  * \brief Gets rdata descriptor for given RR name.
@@ -171,7 +171,7 @@ typedef struct {
  * \retval RR descriptor for given name, NULL descriptor if
  *         unknown type.
  */
-const rdata_descriptor_t *knot_get_rdata_descriptor(const uint16_t type);
+const knot_rdata_descriptor_t *knot_get_rdata_descriptor(const uint16_t type);
 
 /*!
  * \brief Gets rdata descriptor for given RR name (obsolete version).
@@ -181,7 +181,7 @@ const rdata_descriptor_t *knot_get_rdata_descriptor(const uint16_t type);
  * \retval RR descriptor for given name, NULL descriptor if
  *         unknown type.
  */
-const rdata_descriptor_t *knot_get_obsolete_rdata_descriptor(const uint16_t type);
+const knot_rdata_descriptor_t *knot_get_obsolete_rdata_descriptor(const uint16_t type);
 
 /*!
  * \brief Converts numeric type representation to mnemonic string.
@@ -232,36 +232,6 @@ int knot_rrclass_to_string(const uint16_t rrclass,
  * \retval -1 if error.
  */
 int knot_rrclass_from_string(const char *name, uint16_t *num);
-
-/*!
- * \brief Checks if given item is one of dname types.
- *
- * \param item Item value.
- *
- * \retval > 0 if YES.
- * \retval 0 if NO.
- */
-int knot_descriptor_item_is_dname(const int item);
-
-/*!
- * \brief Checks if given item has fixed size.
- *
- * \param item Item value.
- *
- * \retval 1 if YES.
- * \retval 0 if NO.
- */
-int knot_descriptor_item_is_fixed(const int item);
-
-/*!
- * \brief Checks if given item is remainder.
- *
- * \param item Item value.
- *
- * \retval 1 if YES.
- * \retval 0 if NO.
- */
-int knot_descriptor_item_is_remainder(const int item);
 
 /*!
  * \brief Checks if given item is one of metatypes or qtypes.

@@ -19,12 +19,11 @@
 #include "knot/updates/apply.h"
 
 #include "knot/zone/zone.h"
-#include "libknot/common.h"
 #include "knot/updates/changesets.h"
 #include "knot/updates/zone-update.h"
 #include "knot/zone/zonefile.h"
 #include "knot/zone/adjust.h"
-#include "common-knot/lists.h"
+#include "common/lists.h"
 #include "libknot/rrtype/soa.h"
 #include "libknot/rrtype/rrsig.h"
 
@@ -93,10 +92,7 @@ static void delete_empty_node(zone_tree_t *tree, zone_node_t *node)
 		// Delete node
 		zone_node_t *removed_node = NULL;
 		zone_tree_remove(tree, node->owner, &removed_node);
-		if (removed_node->nsec3_node) {
-			// Clear NSEC3 pointers (both forward and backward)
-			removed_node->nsec3_node->nsec3_node = NULL;
-		}
+		UNUSED(removed_node);
 		node_free(&node, NULL);
 	}
 }
@@ -268,7 +264,7 @@ static int apply_remove(zone_contents_t *contents, changeset_t *chset)
 			changeset_iter_clear(&itt);
 			return ret;
 		}
-		
+
 		rr = changeset_iter_next(&itt);
 	}
 	changeset_iter_clear(&itt);
@@ -327,7 +323,7 @@ static int apply_add(zone_contents_t *contents, changeset_t *chset,
 {
 	changeset_iter_t itt;
 	changeset_iter_add(&itt, chset, false);
-	
+
 	knot_rrset_t rr = changeset_iter_next(&itt);
 	while(!knot_rrset_empty(&rr)) {
 		// Get or create node with this owner
@@ -345,7 +341,7 @@ static int apply_add(zone_contents_t *contents, changeset_t *chset,
 		rr = changeset_iter_next(&itt);
 	}
 	changeset_iter_clear(&itt);
-	
+
 	return KNOT_EOK;
 }
 
@@ -367,10 +363,15 @@ static int apply_replace_soa(zone_contents_t *contents, changeset_t *chset)
 static int apply_single(zone_contents_t *contents, changeset_t *chset,
                            bool master)
 {
-	// check if soa_from matches zone's soa
+	/*
+	 * Applies one changeset to the zone. Checks if the changeset may be
+	 * applied (i.e. the origin SOA (soa_from) has the same serial as
+	 * SOA in the zone apex.
+	 */
+
+	// check if serial matches
 	const knot_rdataset_t *soa = node_rdataset(contents->apex, KNOT_RRTYPE_SOA);
-	assert(soa);
-	if (!knot_rdataset_eq(soa, &chset->soa_from->rrs)) {
+	if (soa == NULL || knot_soa_serial(soa) != knot_soa_serial(&chset->soa_from->rrs)) {
 		return KNOT_EINVAL;
 	}
 
@@ -434,7 +435,7 @@ int apply_changeset(zone_t *zone, changeset_t *change, zone_contents_t **new_con
 	if (ret != KNOT_EOK) {
 		return ret;
 	}
-	
+
 	const bool master = (zone_master(zone) == NULL);
 	ret = apply_single(contents_copy, change, master);
 	if (ret != KNOT_EOK) {

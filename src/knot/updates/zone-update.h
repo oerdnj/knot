@@ -29,7 +29,7 @@
 #include "knot/updates/changesets.h"
 #include "knot/zone/zone.h"
 #include "knot/zone/contents.h"
-#include "libknot/mempattern.h"
+#include "common/mempattern.h"
 
 /*! \brief Structure for zone contents updating / querying \todo to be moved to new ZONE API */
 typedef struct {
@@ -76,6 +76,7 @@ int zone_update_init(zone_update_t *update, zone_t *zone, zone_update_flags_t fl
  */
 const zone_node_t *zone_update_get_node(zone_update_t *update,
                                         const knot_dname_t *dname);
+const zone_node_t *zone_update_get_apex(zone_update_t *update);
 
 /*!
  * \brief Clear data allocated by given zone update structure.

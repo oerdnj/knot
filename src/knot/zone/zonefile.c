@@ -28,8 +28,8 @@
 
 #include "common-knot/crc.h"
 #include "common-knot/strlcat.h"
-#include "common-knot/strlcpy.h"
-#include "libknot/common.h"
+#include "common/macros.h"
+#include "common/strlcpy.h"
 #include "knot/zone/semantic-check.h"
 #include "knot/zone/contents.h"
 #include "knot/dnssec/zone-nsec.h"
@@ -48,7 +48,7 @@
 void process_error(zs_scanner_t *s)
 {
 	zcreator_t *zc = s->data;
-	const knot_dname_t *zname = zc->z->apex->owner;
+	const knot_dname_t *zname = zc->up->zone->name;
 
 	ERROR(zname, "%s in zone, file '%s', line %"PRIu64" (%s)",
 	      s->stop ? "fatal error" : "error",
@@ -65,7 +65,7 @@ static int add_rdata_to_rr(knot_rrset_t *rrset, const zs_scanner_t *scanner)
 static bool handle_err(zcreator_t *zc, const zone_node_t *node,
                        const knot_rrset_t *rr, int ret, bool master)
 {
-	const knot_dname_t *zname = zc->z->apex->owner;
+	const knot_dname_t *zname = zc->up->zone->name;
 	char *rrname = rr ? knot_dname_to_str_alloc(rr->owner) : NULL;
 	if (ret == KNOT_EOUTOFZONE) {
 		WARNING(zname, "ignoring out-of-zone data, owner '%s'",
@@ -75,7 +75,8 @@ static bool handle_err(zcreator_t *zc, const zone_node_t *node,
 	} else if (ret == KNOT_ETTL) {
 		free(rrname);
 		assert(node);
-		log_ttl_error(zc->z, node, rr);
+#warning ttl
+//		log_ttl_error(zc->z, node, rr);
 		// Fail if we're the master for this zone.
 		return !master;
 	} else {
@@ -112,10 +113,12 @@ int zcreator_step(zcreator_t *zc, const knot_rrset_t *rr)
 		return KNOT_EINVAL;
 	}
 
-	if (rr->type == KNOT_RRTYPE_SOA &&
-	    node_rrtype_exists(zc->z->apex, KNOT_RRTYPE_SOA)) {
-		// Ignore extra SOA
-		return KNOT_EOK;
+	if (rr->type == KNOT_RRTYPE_SOA) {
+		const zone_node_t *apex = zone_update_get_apex(zc->up);
+		if (node_rrtype_exists(apex, KNOT_RRTYPE_SOA)) {
+			// Ignore extra SOA
+			return KNOT_EOK;
+		}
 	}
 
 	zone_node_t *node = NULL;
@@ -167,7 +170,7 @@ static void scanner_process(zs_scanner_t *scanner)
 	int ret = add_rdata_to_rr(&rr, scanner);
 	if (ret != KNOT_EOK) {
 		char *rr_name = knot_dname_to_str_alloc(rr.owner);
-		const knot_dname_t *zname = zc->z->apex->owner;
+		const knot_dname_t *zname = zc->up->zone->name;
 		ERROR(zname, "failed to add RDATA, file '%s', line %"PRIu64", owner '%s'",
 		      scanner->file.name, scanner->line_counter, rr_name);
 		free(rr_name);
@@ -219,7 +222,6 @@ int zonefile_open(zloader_t *loader, const char *source, const char *origin,
 	/* Create context. */
 	zcreator_t *zc = malloc(sizeof(zcreator_t));
 	if (zc == NULL) {
-		ERR_ALLOC_FAILED;
 		return KNOT_ENOMEM;
 	}
 	memset(zc, 0, sizeof(zcreator_t));

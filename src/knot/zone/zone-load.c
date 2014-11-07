@@ -117,72 +117,73 @@ int zone_load_post(zone_contents_t *contents, zone_t *zone, uint32_t *dnssec_ref
 		return KNOT_EINVAL;
 	}
 
-	int ret = KNOT_EOK;
-	const conf_zone_t *conf = zone->conf;
-	changeset_t change;
-	ret = changeset_init(&change, zone->name);
-	if (ret != KNOT_EOK) {
-		return ret;
-	}
+#warning combine dnssec with diff using update
+	return KNOT_ERROR;
+//	int ret = KNOT_EOK;
+//	const conf_zone_t *conf = zone->conf;
+//	ret = changeset_init(&change, zone->name);
+//	if (ret != KNOT_EOK) {
+//		return ret;
+//	}
 
-	/* Sign zone using DNSSEC (if configured). */
-	if (conf->dnssec_enable) {
-		assert(conf->build_diffs);
-		ret = dnssec_zone_sign(contents, conf, &change, KNOT_SOA_SERIAL_UPDATE,
-		                            dnssec_refresh);
-		if (ret != KNOT_EOK) {
-			changeset_clear(&change);
-			return ret;
-		}
+//	/* Sign zone using DNSSEC (if configured). */
+//	if (conf->dnssec_enable) {
+//		assert(conf->build_diffs);
+//		ret = dnssec_zone_sign(contents, conf, &change, KNOT_SOA_SERIAL_UPDATE,
+//		                            dnssec_refresh);
+//		if (ret != KNOT_EOK) {
+//			changeset_clear(&change);
+//			return ret;
+//		}
 
-		/* Apply DNSSEC changes. */
-		if (!changeset_empty(&change)) {
-			ret = apply_changeset_directly(contents, &change);
-			update_cleanup(&change);
-			if (ret != KNOT_EOK) {
-				changeset_clear(&change);
-				return ret;
-			}
-		} else {
-			changeset_clear(&change);
-		}
-	}
+//		/* Apply DNSSEC changes. */
+//		if (!changeset_empty(&change)) {
+//			ret = apply_changeset_directly(contents, &change);
+//			update_cleanup(&change);
+//			if (ret != KNOT_EOK) {
+//				changeset_clear(&change);
+//				return ret;
+//			}
+//		} else {
+//			changeset_clear(&change);
+//		}
+//	}
 
-	/* Calculate IXFR from differences (if configured). */
-	const bool contents_changed = zone->contents && (contents != zone->contents);
-	if (contents_changed && conf->build_diffs) {
-		/* Replace changes from zone signing, the resulting diff will cover
-		 * those changes as well. */
-		changeset_clear(&change);
-		ret = changeset_init(&change, zone->name);
-		if (ret != KNOT_EOK) {
-			return ret;
-		}
-		ret = zone_contents_create_diff(zone->contents, contents, &change);
-		if (ret == KNOT_ENODIFF) {
-			log_zone_warning(zone->name, "failed to create journal "
-			                 "entry, zone file changed without "
-			                 "SOA serial update");
-			ret = KNOT_EOK;
-		} else if (ret == KNOT_ERANGE) {
-			log_zone_warning(zone->name, "IXFR history will be lost, "
-			                 "zone file changed, but SOA serial decreased");
-			ret = KNOT_EOK;
-		} else if (ret != KNOT_EOK) {
-			log_zone_error(zone->name, "failed to calculate "
-			               "differences from the zone file update (%s)",
-			               knot_strerror(ret));
-			return ret;
-		}
-	}
+//	/* Calculate IXFR from differences (if configured). */
+//	const bool contents_changed = zone->contents && (contents != zone->contents);
+//	if (contents_changed && conf->build_diffs) {
+//		/* Replace changes from zone signing, the resulting diff will cover
+//		 * those changes as well. */
+//		changeset_clear(&change);
+//		ret = changeset_init(&change, zone->name);
+//		if (ret != KNOT_EOK) {
+//			return ret;
+//		}
+//		ret = zone_contents_create_diff(zone->contents, contents, &change);
+//		if (ret == KNOT_ENODIFF) {
+//			log_zone_warning(zone->name, "failed to create journal "
+//			                 "entry, zone file changed without "
+//			                 "SOA serial update");
+//			ret = KNOT_EOK;
+//		} else if (ret == KNOT_ERANGE) {
+//			log_zone_warning(zone->name, "IXFR history will be lost, "
+//			                 "zone file changed, but SOA serial decreased");
+//			ret = KNOT_EOK;
+//		} else if (ret != KNOT_EOK) {
+//			log_zone_error(zone->name, "failed to calculate "
+//			               "differences from the zone file update (%s)",
+//			               knot_strerror(ret));
+//			return ret;
+//		}
+//	}
 
-	/* Write changes (DNSSEC, diff, or both) to journal if all went well. */
-	if (!changeset_empty(&change)) {
-		ret = zone_change_store(zone, &change);
-	}
+//	/* Write changes (DNSSEC, diff, or both) to journal if all went well. */
+//	if (!changeset_empty(&change)) {
+//		ret = zone_change_store(zone, &change);
+//	}
 
-	changeset_clear(&change);
-	return ret;
+//	changeset_clear(&change);
+//	return ret;
 }
 
 bool zone_load_can_bootstrap(const conf_zone_t *zone_config)

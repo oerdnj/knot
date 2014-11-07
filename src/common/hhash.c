@@ -2,19 +2,18 @@
 #include <assert.h>
 #include <stdbool.h>
 
-#include "common-knot/hhash.h"
-#include "common-knot/binsearch.h"
+#include "common/hhash.h"
+#include "common/binsearch.h"
+#include "common/trie/murmurhash3.h"
 #include "libknot/errcode.h"
-#include "common-knot/hattrie/murmurhash3.h"
-#include "libknot/common.h"
 
 /* UCW array sorting defines. */
 static int universal_cmp(uint32_t k1, uint32_t k2, hhash_t *tbl);
 #define ASORT_PREFIX(X) hhash_##X
-#define ASORT_KEY_TYPE uint32_t 
+#define ASORT_KEY_TYPE uint32_t
 #define ASORT_LT(x, y) (universal_cmp((x), (y), tbl) < 0)
-#define ASORT_EXTRA_ARGS , hhash_t *tbl 
-#include "common-knot/array-sort.h"
+#define ASORT_EXTRA_ARGS , hhash_t *tbl
+#include "common/array-sort.h"
 
 /* Hopscotch internal defines. */
 #define HOP_NEXT(x) __builtin_ctz((x))
@@ -28,7 +27,7 @@ static int universal_cmp(uint32_t k1, uint32_t k2, hhash_t *tbl);
  * Value is fixed size (pointer), so is keylen.
  * Key is variable-sized string. */
 #define KEY_VAL(p) (p)
-#define KEY_LEN(p) ((p) + HHVAL_LEN)
+#define KEY_LEN(p) ((char*)(p) + HHVAL_LEN)
 #define KEY_STR(p) ((char*)(p) + HHKEY_LEN)
 
 /*! \brief Helper function to read key length. */
@@ -218,7 +217,7 @@ hhash_t *hhash_create_mm(uint32_t size, const mm_ctx_t *mm)
 	}
 
 	const size_t total_len = sizeof(hhash_t) + size * sizeof(hhelem_t);
-	hhash_t *tbl = mm->alloc(mm->ctx, total_len);
+	hhash_t *tbl = mm_alloc((mm_ctx_t *)mm, total_len);
 	if (tbl) {
 		memset(tbl, 0, total_len);
 		tbl->size = size;
@@ -439,6 +438,7 @@ int hhash_find_next(hhash_t* tbl, const char* key, uint16_t len, value_t** dst)
 		return 1;
 	}
 	
+#warning this fails tests
 	int k = BIN_SEARCH_FIRST_GE_CMP(tbl, tbl->weight, CMP_LE, key, len) - 1;
 	/* Found prev or equal, we want next */
 	if (k + 1 < tbl->weight) {

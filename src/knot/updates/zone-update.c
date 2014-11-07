@@ -17,7 +17,7 @@
 #include "knot/updates/zone-update.h"
 #include "knot/updates/changesets.h"
 #include "knot/updates/apply.h"
-#include "common-knot/lists.h"
+#include "common/lists.h"
 #include "common/mempool.h"
 
 static int add_to_node(zone_node_t *node, const zone_node_t *add_node,
@@ -203,6 +203,11 @@ const zone_node_t *zone_update_get_node(zone_update_t *update, const knot_dname_
 	}
 
 	return synth_node;
+}
+
+const zone_node_t *zone_update_get_apex(zone_update_t *update)
+{
+	return zone_update_get_node(update, update->zone->name);
 }
 
 void zone_update_clear(zone_update_t *update)
@@ -471,4 +476,3 @@ const zone_node_t *zone_update_iter_val(zone_update_iter_t *it)
 		return NULL;
 	}
 }
-

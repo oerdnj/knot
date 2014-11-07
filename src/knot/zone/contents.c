@@ -18,10 +18,11 @@
 
 #include "knot/zone/contents.h"
 #include "common/debug.h"
+#include "common/macros.h"
 #include "libknot/rrset.h"
 #include "common/base32hex.h"
 #include "libknot/descriptor.h"
-#include "common-knot/hattrie/hat-trie.h"
+#include "common/trie/hat-trie.h"
 #include "knot/dnssec/zone-nsec.h"
 #include "knot/dnssec/zone-sign.h"
 #include "knot/zone/zone-tree.h"
@@ -152,7 +153,6 @@ static int discover_additionals(struct rr_data *rr_data,
 	}
 	rr_data->additional = malloc(rdcount * sizeof(zone_node_t *));
 	if (rr_data->additional == NULL) {
-		ERR_ALLOC_FAILED;
 		return KNOT_ENOMEM;
 	}
 
@@ -925,12 +925,13 @@ dbg_zone_exec_detail(
 		for (uint16_t i = 0;
 		     i < nsec3_rrs->rr_count && !match;
 		     i++) {
-			if (knot_zc_nsec3_parameters_match(nsec3_rrs,
-			                                   &zone->nsec3_params,
-			                                   i)) {
-				/* Matching NSEC3PARAM match at position nr.: i. */
-				match = 1;
-			}
+#warning drop this, just use one tree
+//			if (knot_zc_nsec3_parameters_match(nsec3_rrs,
+//			                                   &zone->nsec3_params,
+//			                                   i)) {
+//				/* Matching NSEC3PARAM match at position nr.: i. */
+//				match = 1;
+//			}
 		}
 
 		if (match) {
@@ -1144,7 +1145,6 @@ int zone_contents_shallow_copy(const zone_contents_t *from, zone_contents_t **to
 
 	zone_contents_t *contents = calloc(1, sizeof(zone_contents_t));
 	if (contents == NULL) {
-		ERR_ALLOC_FAILED;
 		return KNOT_ENOMEM;
 	}
 
@@ -1184,8 +1184,6 @@ void zone_contents_free(zone_contents_t **contents)
 	zone_tree_free(&(*contents)->nodes);
 	dbg_zone("Destroying NSEC3 zone tree.\n");
 	zone_tree_free(&(*contents)->nsec3_nodes);
-
-	knot_nsec3param_free(&(*contents)->nsec3_params);
 
 	free(*contents);
 	*contents = NULL;
