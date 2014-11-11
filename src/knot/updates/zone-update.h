@@ -34,7 +34,7 @@
 /*! \brief Structure for zone contents updating / querying \todo to be moved to new ZONE API */
 typedef struct {
 	zone_t *zone;        /*!< Zone being updated. */
-	zone_contents_t *c;
+	zone_contents_t *new_cont;
 	changeset_t change;          /*!< Changes we want to apply. */
 	mm_ctx_t mm;                  /*!< Memory context used for intermediate nodes. */
 	uint8_t flags;
@@ -52,7 +52,8 @@ typedef struct {
 typedef enum {
 	UPDATE_FULL = 1 << 0,
 	UPDATE_INCREMENTAL = 1 << 1,
-	UPDATE_SIGN = 1 << 2
+	UPDATE_SIGN = 1 << 2,
+	UPDATE_DIFF = 1 << 3
 } zone_update_flags_t;
 
 /*!

@@ -1093,14 +1093,8 @@ int knot_zone_sign(zone_update_t *up,
  * \brief Sign changeset created by DDNS or zone-diff.
  */
 int knot_zone_sign_changeset(zone_update_t *up,
-                             const knot_zone_keys_t *zone_keys,
-                             const knot_dnssec_policy_t *policy,
                              uint32_t *refresh_at)
 {
-	if (up == NULL || zone_keys == NULL || policy == NULL || refresh_at == NULL) {
-		return KNOT_EINVAL;
-	}
-
 #warning figure this out
 //	// Create args for wrapper function - hattrie for duplicate sigs
 //	changeset_signing_data_t args = {

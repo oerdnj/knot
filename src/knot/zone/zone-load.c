@@ -24,9 +24,9 @@
 #include "knot/updates/apply.h"
 #include "libknot/rdata.h"
 
-zone_contents_t *zone_load_contents(conf_zone_t *zone_config)
+int zone_load_contents(zone_t *zone)
 {
-	assert(zone_config);
+	assert(zone);
 
 	zloader_t zl;
 	int ret = zonefile_open(&zl, zone_config->file, zone_config->name,
@@ -50,26 +50,22 @@ zone_contents_t *zone_load_contents(conf_zone_t *zone_config)
 }
 
 /*! \brief Check zone configuration constraints. */
-int zone_load_check(zone_contents_t *contents, conf_zone_t *zone_config)
+void zone_set_payload(zone_t *zone)
 {
 	/* Bootstrapped zone, no checks apply. */
-	if (contents == NULL) {
-		return KNOT_EOK;
+	if (zone->contents == NULL) {
+		return;
 	}
 
-	const knot_dname_t *zone_name = contents->apex->owner;
-
 	/* Check minimum EDNS0 payload if signed. (RFC4035/sec. 3) */
-	if (zone_contents_is_signed(contents)) {
+	if (zone_contents_is_signed(zone->contents)) {
 		if (conf()->max_udp_payload < KNOT_EDNS_MIN_DNSSEC_PAYLOAD) {
-			log_zone_warning(zone_name, "EDNS payload size is "
+			log_zone_warning(zone->name, "EDNS payload size is "
 			                 "lower than %u bytes for DNSSEC zone",
 					 KNOT_EDNS_MIN_DNSSEC_PAYLOAD);
 			conf()->max_udp_payload = KNOT_EDNS_MIN_DNSSEC_PAYLOAD;
 		}
 	}
-
-	return KNOT_EOK;
 }
 
 /*!

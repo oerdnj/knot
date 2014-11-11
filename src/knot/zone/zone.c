@@ -108,8 +108,10 @@ void zone_free(zone_t **zone_ptr)
 
 int zone_change_store(zone_t *zone, changeset_t *change)
 {
+	if (change == NULL) {
+		return KNOT_EOK;
+	}
 	assert(zone);
-	assert(change);
 
 	conf_zone_t *conf = zone->conf;
 

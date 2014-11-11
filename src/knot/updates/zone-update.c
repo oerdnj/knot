@@ -17,6 +17,9 @@
 #include "knot/updates/zone-update.h"
 #include "knot/updates/changesets.h"
 #include "knot/updates/apply.h"
+#include "knot/zone/zone-diff.h"
+#include "knot/dnssec/zone-events.h"
+#include "knot/dnssec/zone-sign.h"
 #include "common/lists.h"
 #include "common/mempool.h"
 
@@ -121,6 +124,25 @@ static bool zone_empty(const zone_contents_t *zone)
 	       zone->apex->rrset_count == 0;
 }
 
+int init_incremental(zone_update_t *update, zone_t *zone)
+{
+	int ret = changeset_init(&update->change, zone->name);
+	if (ret != KNOT_EOK) {
+		return ret;
+	}
+	assert(zone->contents);
+	update->new_cont = zone->contents;
+}
+
+
+int init_full(zone_update_t *update, zone_t *zone)
+{
+	update->new_cont = zone_contents_new(zone->name);
+	if (update->new_cont == NULL) {
+		return KNOT_ENOMEM;
+	}
+}
+
 /* ------------------------------- API -------------------------------------- */
 
 int zone_update_init(zone_update_t *update, zone_t *zone, zone_update_flags_t flags)
@@ -131,25 +153,18 @@ int zone_update_init(zone_update_t *update, zone_t *zone, zone_update_flags_t fl
 	
 	memset(update, 0, sizeof(*update));
 	update->zone = zone;
-	
-	if (flags & UPDATE_INCREMENTAL) {
-		int ret = changeset_init(&update->change, zone->name);
-		if (ret != KNOT_EOK) {
-			return ret;
-		}
-		assert(zone->contents);
-		update->c = zone->contents;
-	} else if (flags & UPDATE_FULL) {
-		update->c = zone_contents_new(zone->name);
-		if (update->c == NULL) {
-			return KNOT_ENOMEM;
-		}
-	}
-	
+
 	mm_ctx_mempool(&update->mm, 4096);
 	update->flags = 0;
-	
-	return KNOT_EOK;
+
+	if (flags & UPDATE_INCREMENTAL) {
+		return init_incremental(update, zone);
+	} else if (flags & UPDATE_FULL) {
+		return init_full(update, zone);
+	} else {
+		// One of FULL or INCREMENTAL flags must be set.
+		return KNOT_EINVAL;
+	}
 }
 
 const zone_node_t *zone_update_get_node(zone_update_t *update, const knot_dname_t *dname)
@@ -159,7 +174,7 @@ const zone_node_t *zone_update_get_node(zone_update_t *update, const knot_dname_
 	}
 
 	const zone_node_t *old_node =
-		zone_contents_find_node(update->c, dname);
+		zone_contents_find_node(update->new_cont, dname);
 	if (update->flags & UPDATE_FULL) {
 		// No changeset, no changes.
 		return old_node;
@@ -218,63 +233,51 @@ void zone_update_clear(zone_update_t *update)
 	}
 }
 
-static bool apex_rr_changed(const zone_contents_t *old_contents,
-                            const zone_contents_t *new_contents,
+static bool apex_rr_changed(const zone_node_t *old_apex,
+                            const zone_node_t *new_apex,
                             uint16_t type)
 {
-	knot_rrset_t old_rr = node_rrset(old_contents->apex, type);
-	knot_rrset_t new_rr = node_rrset(new_contents->apex, type);
+	knot_rrset_t old_rr = node_rrset(old_apex, type);
+	knot_rrset_t new_rr = node_rrset(new_apex, type);
 
 	return !knot_rrset_equal(&old_rr, &new_rr, KNOT_RRSET_COMPARE_WHOLE);
 }
 
-static int sign_update(zone_t *zone, const zone_contents_t *old_contents,
-                       zone_contents_t *new_contents, changeset_t *ddns_ch,
-                       changeset_t *sec_ch)
+static bool dnskey_nsec3param_changed(const zone_update_t *update)
 {
-	assert(zone != NULL);
-	assert(old_contents != NULL);
-	assert(new_contents != NULL);
-	assert(ddns_ch != NULL);
+	assert(update->zone->contents);
+	const zone_node_t *new_apex = zone_update_get_apex(update);
+	const zone_node_t *old_apex = update->zone->contents->apex;
+	return !changeset_empty(&update->change) &&
+	       (apex_rr_changed(new_apex, old_apex, KNOT_RRTYPE_DNSKEY) ||
+	        apex_rr_changed(new_apex, old_apex, KNOT_RRTYPE_NSEC3PARAM));
+}
 
-	/*
-	 * Check if the UPDATE changed DNSKEYs or NSEC3PARAM.
-	 * If so, we have to sign the whole zone.
-	 */
-	int ret = KNOT_EOK;
+static int sign_update(zone_update_t *update)
+{
+	if (!update->zone->conf->dnssec_enable) {
+		return KNOT_EOK;
+	}
+
 	uint32_t refresh_at = 0;
-	if (apex_rr_changed(old_contents, new_contents, KNOT_RRTYPE_DNSKEY) ||
-	    apex_rr_changed(old_contents, new_contents, KNOT_RRTYPE_NSEC3PARAM)) {
-		ret = knot_dnssec_zone_sign(new_contents, zone->conf,
-		                            sec_ch, KNOT_SOA_SERIAL_KEEP,
-		                            &refresh_at);
+	const bool full_sign = changeset_empty(&update->change) ||
+	                       dnskey_nsec3param_changed(&update);
+	if (full_sign) {
+		int ret = dnssec_zone_sign(update, &refresh_at);
+		if (ret != KNOT_EOK) {
+			return ret;
+		}
 	} else {
-		// Sign the created changeset
-		ret = knot_dnssec_sign_changeset(new_contents, zone->conf,
-		                                 ddns_ch, sec_ch,
-		                                 &refresh_at);
-	}
-	if (ret != KNOT_EOK) {
-		return ret;
-	}
-
-	// Apply DNSSEC changeset
-	ret = apply_changeset_directly(new_contents, sec_ch);
-	if (ret != KNOT_EOK) {
-		return ret;
-	}
-
-	// Merge changesets
-	ret = changeset_merge(ddns_ch, sec_ch);
-	if (ret != KNOT_EOK) {
-		update_cleanup(sec_ch);
-		return ret;
+		int ret = knot_zone_sign_changeset(update, &refresh_at);
+		if (ret != KNOT_EOK) {
+			return ret;
+		}
 	}
 
 	// Plan next zone resign.
-	const time_t resign_time = zone_events_get_time(zone, ZONE_EVENT_DNSSEC);
+	const time_t resign_time = zone_events_get_time(update->zone, ZONE_EVENT_DNSSEC);
 	if (time(NULL) + refresh_at < resign_time) {
-		zone_events_schedule(zone, ZONE_EVENT_DNSSEC, refresh_at);
+		zone_events_schedule(update->zone, ZONE_EVENT_DNSSEC, refresh_at);
 	}
 
 	return KNOT_EOK;
@@ -286,7 +289,7 @@ int zone_update_add(zone_update_t *update, const knot_rrset_t *rrset)
 		return changeset_add_rrset(&update->change, rrset);
 	} else if (update->flags & UPDATE_FULL) {
 		zone_node_t *n;
-		return zone_contents_add_rr(update->c, rrset, &n);
+		return zone_contents_add_rr(update->new_cont, rrset, &n);
 	} else {
 		return KNOT_EINVAL;
 	}
@@ -302,51 +305,106 @@ int zone_update_remove(zone_update_t *update, const knot_rrset_t *rrset)
 	}
 }
 
+static int create_diff(zone_update_t *update)
+{
+	// Create diff from two zone contents if possible.
+	zone_contents_t *old_contents = update->zone->contents;
+	if (!zone_contents_is_empty(old_contents) &&
+	    !zone_contents_is_empty(update->new_cont)) {
+		int ret = changeset_init(&update->change, update->zone->name);
+		if (ret != KNOT_EOK) {
+			return ret;
+		}
+		ret = zone_contents_create_diff(old_contents,
+		                                update->new_cont,
+		                                &update->change);
+		if (ret != KNOT_EOK) {
+			return ret;
+		}
+	}
+
+	return KNOT_EOK;
+}
+
+static int apply_change(zone_update_t *update, zone_contents_t **new_contents,
+                        bool *must_rollback)
+{
+	if (update->new_cont) {
+		// Apply changes directly to new zone.
+		int ret = apply_changeset_directly(update->new_cont,
+		                                   &update->change);
+		if (ret != KNOT_EOK) {
+			return ret;
+		}
+		new_contents = update->new_cont;
+	} else {
+		// Changing live zone - apply with zone copy.
+		assert(update->new_cont == NULL);
+		int ret = apply_changeset(update->zone, &update->change,
+		                          &new_contents);
+		if (ret != KNOT_EOK) {
+			return ret;
+		}
+		*must_rollback = true;
+	}
+	
+	return KNOT_EOK;
+}
+
 int zone_update_commit(zone_update_t *update)
 {
 	if (update->flags & UPDATE_SIGN) {
-		int ret = sign_change(update);
+		int ret = sign_update(update);
 		if (ret != KNOT_EOK) {
 			return ret;
 		}
 	}
-	
-	if (update->flags & UPDATE_FULL) {
-		zone_contents_t *old_contents = zone_switch_contents(update->zone, update->c);
-		synchronize_rcu();
-		
-		zone_contents_deep_free(&old_contents);
-		return KNOT_EOK;
-	} else if (update->flags & UPDATE_INCREMENTAL) {
-		const bool change_made = !changeset_empty(&update->change);
-		if (!change_made) {
-			return KNOT_EOK;
-		}
-		
-		zone_contents_t *new_contents;
-		int ret = apply_changeset(update->zone, &update->change, &new_contents);
+
+	zone_contents_t *new_contents = NULL;
+	bool change_made = !changeset_empty(&update->change);
+	bool must_rollback = false;
+	if (change_made) {
+		int ret = apply_change(update, &new_contents, &must_rollback);
 		if (ret != KNOT_EOK) {
 			return ret;
 		}
-
-		ret = zone_change_store(update->zone, &update->change);
+	} else if (update->flags & UPDATE_DIFF) {
+		int ret = create_diff(update);
 		if (ret != KNOT_EOK) {
-			update_rollback(&update->change);
-			update_free_zone(&new_contents);
 			return ret;
 		}
+	}
 
-		zone_contents_t *old_contents =
-			zone_switch_contents(update->zone, new_contents);
-		synchronize_rcu();
-		
+	change_made = !changeset_empty(&update->change);
+	if (change_made) {
+		// Write received changes / DNSSEC / diff data.
+		int ret = zone_change_store(update->zone, &update->change);
+		if (ret != KNOT_EOK) {
+			if (must_rollback) {
+				update_rollback(&update->change);
+				update_free_zone(&new_contents);
+			}
+			return ret;
+		}
+	}
+
+	// Switch zone contents.
+	zone_contents_t *old_contents = NULL;
+	if (update->new_cont) {
+		old_contents = zone_switch_contents(update->zone, update->new_cont);
+	}
+
+	synchronize_rcu();
+
+	if (must_rollback) {
 		update_free_zone(&old_contents);
-		update_cleanup(&update->change);
-		
-		return KNOT_EOK;
 	} else {
-		return KNOT_EINVAL;
+		zone_contents_deep_free(&old_contents);
 	}
+
+	update_cleanup(&update->change);
+
+	return KNOT_EOK;
 }
 
 #define init_iter_with_tree(it, update, tree) \

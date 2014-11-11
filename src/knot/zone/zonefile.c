@@ -62,8 +62,7 @@ static int add_rdata_to_rr(knot_rrset_t *rrset, const zs_scanner_t *scanner)
 	                         scanner->r_ttl, NULL);
 }
 
-static bool handle_err(zcreator_t *zc, const zone_node_t *node,
-                       const knot_rrset_t *rr, int ret, bool master)
+static bool handle_err(zcreator_t *zc, const knot_rrset_t *rr, int ret, bool master)
 {
 	const knot_dname_t *zname = zc->up->zone->name;
 	char *rrname = rr ? knot_dname_to_str_alloc(rr->owner) : NULL;
@@ -74,7 +73,7 @@ static bool handle_err(zcreator_t *zc, const zone_node_t *node,
 		return true;
 	} else if (ret == KNOT_ETTL) {
 		free(rrname);
-		assert(node);
+//		assert(node);
 #warning ttl
 //		log_ttl_error(zc->z, node, rr);
 		// Fail if we're the master for this zone.
@@ -121,10 +120,9 @@ int zcreator_step(zcreator_t *zc, const knot_rrset_t *rr)
 		}
 	}
 
-	zone_node_t *node = NULL;
-	int ret = zone_contents_add_rr(zc->z, rr, &node);
+	int ret = zone_update_add(zc->up, rr);
 	if (ret != KNOT_EOK) {
-		if (!handle_err(zc, node, rr, ret, zc->master)) {
+		if (!handle_err(zc, rr, ret, zc->master)) {
 			// Fatal error
 			return ret;
 		}
@@ -133,19 +131,19 @@ int zcreator_step(zcreator_t *zc, const knot_rrset_t *rr)
 			return KNOT_EOK;
 		}
 	}
-	assert(node);
 
 	// Do node semantic checks
 	err_handler_t err_handler;
 	err_handler_init(&err_handler);
 	bool sem_fatal_error = false;
 
-	ret = sem_check_node_plain(zc->z, node,
-	                           &err_handler, true,
-	                           &sem_fatal_error);
-	if (ret != KNOT_EOK) {
-		return ret;
-	}
+#warning move semchecks into zone_updater.
+//	ret = sem_check_node_plain(zc->z, node,
+//	                           &err_handler, true,
+//	                           &sem_fatal_error);
+//	if (ret != KNOT_EOK) {
+//		return ret;
+//	}
 
 	return sem_fatal_error ? KNOT_ESEMCHECK : KNOT_EOK;
 }

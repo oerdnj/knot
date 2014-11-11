@@ -697,25 +697,33 @@ static int cmd_checkzone(int argc, char *argv[], unsigned flags)
 		return KNOT_ERROR;
 	}
 	for (; !hattrie_iter_finished(z_iter); hattrie_iter_next(z_iter)) {
-		conf_zone_t *zone = (conf_zone_t *)*hattrie_iter_val(z_iter);
-
+		conf_zone_t *zone_conf = (conf_zone_t *)*hattrie_iter_val(z_iter);
+		zone_t *zone = zone_new(zone_conf);
+		if (zone == NULL) {
+			rc = 1;
+			continue;
+		}
 		/* Fetch zone */
-		int zone_match = fetch_zone(argc, argv, zone);
+		int zone_match = fetch_zone(argc, argv, zone_conf);
 
 		if (!zone_match && argc > 0) {
-			conf_free_zone(zone);
+			zone->conf = NULL;
+			zone_free(&zone);
 			continue;
 		}
 
 		/* Create zone loader context. */
 		zone_contents_t *loaded_zone = zone_load_contents(zone);
 		if (loaded_zone == NULL) {
+			zone->conf = NULL;
+			zone_free(&zone);
 			rc = 1;
 			continue;
 		}
 
 		log_zone_str_info(zone->name, "zone is valid");
-		zone_contents_deep_free(&loaded_zone);
+		zone->conf = NULL;
+		zone_free(&zone);
 	}
 	hattrie_iter_free(z_iter);
 

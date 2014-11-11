@@ -62,8 +62,6 @@ int knot_zone_sign(zone_update_t *up,
  * \return Error code, KNOT_EOK if successful.
  */
 int knot_zone_sign_changeset(zone_update_t *up,
-                             const knot_zone_keys_t *zone_keys,
-                             const knot_dnssec_policy_t *policy,
                              uint32_t *refresh_at);
 
 /*!

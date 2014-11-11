@@ -237,13 +237,19 @@ int event_reload(zone_t *zone)
 	time_t mtime = zonefile_mtime(zone->conf->file);
 	uint32_t dnssec_refresh = time(NULL);
 	conf_zone_t *zone_config = zone->conf;
-	zone_contents_t *contents = zone_load_contents(zone_config);
-	if (!contents) {
-		return KNOT_ERROR;
+	zone_update_t up;
+	int ret = zone_update_init(&up, zone, UPDATE_FULL | UPDATE_SIGN);
+	if (ret != KNOT_EOK) {
+		return ret;
+	}
+
+	ret = zone_load_contents(&up);
+	if (ret != KNOT_EOK) {
+		return ret;
 	}
 
 	/* Store zonefile serial and apply changes from the journal. */
-	zone->zonefile_serial = zone_contents_serial(contents);
+	zone->zonefile_serial = zone_contents_serial(up.new_cont);
 	int result = zone_load_journal(zone, contents);
 	if (result != KNOT_EOK) {
 		goto fail;
@@ -263,11 +269,7 @@ int event_reload(zone_t *zone)
 		goto fail;
 	}
 
-	/* Check zone contents consistency. */
-	result = zone_load_check(contents, zone_config);
-	if (result != KNOT_EOK) {
-		goto fail;
-	}
+	zone_set_payload(zone);
 
 	/* Everything went alright, switch the contents. */
 	zone->zonefile_mtime = mtime;

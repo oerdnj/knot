@@ -27,7 +27,7 @@
  * \param zone_config
  * \return new zone contents or NULL
  */
-zone_contents_t *zone_load_contents(conf_zone_t *zone_config);
+int zone_load_contents(zone_t *zone);
 
 /*!
  * \brief Check loaded zone contents validity.
@@ -36,7 +36,7 @@ zone_contents_t *zone_load_contents(conf_zone_t *zone_config);
  * \param zone_config
  * \return KNOT_EOK or an error
  */
-int zone_load_check(zone_contents_t *contents, conf_zone_t *zone_config);
+void zone_load_check(zone_t *zone);
 
 /*!
  * \brief Update zone contents from the journal.
