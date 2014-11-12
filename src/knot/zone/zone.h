@@ -90,12 +90,6 @@ zone_t *zone_new(conf_zone_t *conf);
  */
 void zone_free(zone_t **zone_ptr);
 
-/*!
- * \note Zone change API below, subject to change.
- * \ref #223 New zone API
- * \todo get rid of this
- */
-int zone_changes_store(zone_t *zone, list_t *chgs);
 int zone_change_store(zone_t *zone, changeset_t *change);
 /*!
  * \brief Atomically switch the content of the zone.

@@ -713,13 +713,14 @@ static int cmd_checkzone(int argc, char *argv[], unsigned flags)
 		}
 
 		/* Create zone loader context. */
-		zone_contents_t *loaded_zone = zone_load_contents(zone);
-		if (loaded_zone == NULL) {
-			zone->conf = NULL;
-			zone_free(&zone);
-			rc = 1;
-			continue;
-		}
+#warning not like this
+//		zone_contents_t *loaded_zone = zone_load_contents(zone);
+//		if (loaded_zone == NULL) {
+//			zone->conf = NULL;
+//			zone_free(&zone);
+//			rc = 1;
+//			continue;
+//		}
 
 		log_zone_str_info(zone->name, "zone is valid");
 		zone->conf = NULL;

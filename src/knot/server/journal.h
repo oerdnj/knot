@@ -166,21 +166,6 @@ int journal_close(journal_t *journal);
 bool journal_exists(const char *path);
 
 /*!
- * \brief Load changesets from journal.
- *
- * \param path Path to journal file.
- * \param dst Store changesets here.
- * \param from Start serial.
- * \param to End serial.
- *
- * \retval KNOT_EOK on success.
- * \retval KNOT_ERANGE if given entry was not found.
- * \return < KNOT_EOK on error.
- */
-int journal_load_changesets(const struct zone_t *zone, list_t *dst,
-                            uint32_t from, uint32_t to);
-
-/*!
  * \brief Store changesets in journal.
  *
  * \param src Changesets to store.
@@ -191,8 +176,9 @@ int journal_load_changesets(const struct zone_t *zone, list_t *dst,
  * \retval KNOT_EBUSY when journal is full.
  * \return < KNOT_EOK on other errors.
  */
-int journal_store_changesets(list_t *src, const char *path, size_t size_limit);
 int journal_store_changeset(changeset_t *change, const char *path, size_t size_limit);
+
+int journal_load_changesets(const struct zone_t *zone, list_t *dst, uint32_t from, uint32_t to);
 
 /*! \brief Function for unmarking dirty nodes. */
 /*!

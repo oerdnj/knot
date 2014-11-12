@@ -14,10 +14,13 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "libknot/rrtype/soa.h"
+
 #include "knot/updates/zone-update.h"
 #include "knot/updates/changesets.h"
 #include "knot/updates/apply.h"
 #include "knot/zone/zone-diff.h"
+#include "knot/zone/zonefile.h"
 #include "knot/dnssec/zone-events.h"
 #include "knot/dnssec/zone-sign.h"
 #include "common/lists.h"
@@ -225,6 +228,16 @@ const zone_node_t *zone_update_get_apex(zone_update_t *update)
 	return zone_update_get_node(update, update->zone->name);
 }
 
+const zone_node_t *zone_update_serial(zone_update_t *update)
+{
+	const zone_node_t *apex = zone_update_get_apex(update);
+	if (apex) {
+		return knot_soa_serial(node_rdataset(apex, KNOT_RRTYPE_SOA));
+	} else {
+		return 0;
+	}
+}
+
 void zone_update_clear(zone_update_t *update)
 {
 	if (update) {
@@ -403,6 +416,8 @@ int zone_update_commit(zone_update_t *update)
 	}
 
 	update_cleanup(&update->change);
+	
+#warning log update
 
 	return KNOT_EOK;
 }
@@ -534,3 +549,30 @@ const zone_node_t *zone_update_iter_val(zone_update_iter_t *it)
 		return NULL;
 	}
 }
+
+int zone_update_load_contents(zone_update_t *up)
+{
+	assert(up);
+	assert(up->flags & UPDATE_FULL);
+
+	zloader_t zl = { 0 };
+	int ret = zonefile_open(&zl, up->zone->conf->file, up->zone->conf->name,
+	                        up->zone->conf->enable_checks);
+	if (ret != KNOT_EOK) {
+		return ret;
+	}
+
+	/* Set the zone type (master/slave). If zone has no master set, we
+	 * are the primary master for this zone (i.e. zone type = master).
+	 */
+	zl.creator->master = !zone_load_can_bootstrap(up->zone->conf);
+
+	zone_contents_t *zone_contents = zonefile_load(&zl);
+	zonefile_close(&zl);
+	if (zone_contents == NULL) {
+		return NULL;
+	}
+
+	return zone_contents;
+}
+

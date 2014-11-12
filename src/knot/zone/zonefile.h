@@ -76,7 +76,7 @@ int zonefile_open(zloader_t *loader, const char *source, const char *origin,
  * \retval Loaded zone contents on success.
  * \retval NULL otherwise.
  */
-zone_contents_t *zonefile_load(zloader_t *loader);
+int zonefile_load(zloader_t *loader);
 
 /*! \brief Return zone file mtime. */
 time_t zonefile_mtime(const char *path);

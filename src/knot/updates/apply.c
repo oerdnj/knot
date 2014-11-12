@@ -23,6 +23,7 @@
 #include "knot/updates/zone-update.h"
 #include "knot/zone/zonefile.h"
 #include "knot/zone/adjust.h"
+#include "common/macros.h"
 #include "common/lists.h"
 #include "libknot/rrtype/soa.h"
 #include "libknot/rrtype/rrsig.h"

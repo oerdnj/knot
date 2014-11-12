@@ -21,6 +21,8 @@
 #include "knot/zone/contents.h"
 #include "knot/zone/zone.h"
 
+#warning get rid of this file
+
 /*!
  * \brief Load zone contents according to the configuration.
  *
@@ -28,33 +30,6 @@
  * \return new zone contents or NULL
  */
 int zone_load_contents(zone_t *zone);
-
-/*!
- * \brief Check loaded zone contents validity.
- *
- * \param contents
- * \param zone_config
- * \return KNOT_EOK or an error
- */
-void zone_load_check(zone_t *zone);
-
-/*!
- * \brief Update zone contents from the journal.
- *
- * \param zone
- * \param contents
- * \return KNOT_EOK or an error
- */
-int zone_load_journal(zone_t *zone, zone_contents_t *contents);
-
-/*!
- * \brief Zone loading post-actions (zone resign, calculation of delta)
- *
- * \param contents
- * \param zone
- * \return KNOT_EOK or an error
- */
-int zone_load_post(zone_contents_t *contents, zone_t *zone, uint32_t *dnssec_refresh);
 
 /*!
  * \brief Check if zone can be bootstrapped.

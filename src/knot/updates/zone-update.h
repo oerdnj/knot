@@ -78,6 +78,7 @@ int zone_update_init(zone_update_t *update, zone_t *zone, zone_update_flags_t fl
 const zone_node_t *zone_update_get_node(zone_update_t *update,
                                         const knot_dname_t *dname);
 const zone_node_t *zone_update_get_apex(zone_update_t *update);
+const zone_node_t *zone_update_serial(zone_update_t *update);
 
 /*!
  * \brief Clear data allocated by given zone update structure.
@@ -94,4 +95,5 @@ int zone_update_iter(zone_update_iter_t *it, zone_update_t *update);
 int zone_update_iter_nsec3(zone_update_iter_t *it, zone_update_t *update);
 int zone_update_iter_next(zone_update_iter_t *it);
 const zone_node_t *zone_update_iter_val(zone_update_iter_t *it);
+int zone_update_load_contents(zone_update_t *up);
 

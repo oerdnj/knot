@@ -27,6 +27,7 @@
 #include "knot/zone/zone.h"
 #include "knot/zone/zonefile.h"
 #include "knot/zone/contents.h"
+#include "knot/server/journal.h"
 #include "knot/updates/apply.h"
 #include "libknot/processing/requestor.h"
 #include "knot/nameserver/process_query.h"
@@ -126,29 +127,6 @@ int zone_change_store(zone_t *zone, changeset_t *change)
 		}
 
 		return journal_store_changeset(change, conf->ixfr_db, conf->ixfr_fslimit);
-	}
-
-	return ret;
-}
-
-int zone_changes_store(zone_t *zone, list_t *chgs)
-{
-	assert(zone);
-	assert(chgs);
-
-	conf_zone_t *conf = zone->conf;
-
-	int ret = journal_store_changesets(chgs, conf->ixfr_db, conf->ixfr_fslimit);
-	if (ret == KNOT_EBUSY) {
-		log_zone_notice(zone->name, "journal is full, flushing");
-
-		/* Transaction rolled back, journal released, we may flush. */
-		ret = zone_flush_journal(zone);
-		if (ret != KNOT_EOK) {
-			return ret;
-		}
-
-		return journal_store_changesets(chgs, conf->ixfr_db, conf->ixfr_fslimit);
 	}
 
 	return ret;

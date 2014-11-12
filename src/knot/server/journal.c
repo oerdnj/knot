@@ -1205,32 +1205,6 @@ int journal_load_changesets(const zone_t *zone, list_t *dst,
 	return KNOT_EOK;
 }
 
-int journal_store_changesets(list_t *src, const char *path, size_t size_limit)
-{
-	if (src == NULL || path == NULL) {
-		return KNOT_EINVAL;
-	}
-
-	/* Open journal for reading. */
-	int ret = KNOT_EOK;
-	journal_t *journal = journal_open(path, size_limit);
-	if (journal == NULL) {
-		return KNOT_ENOMEM;
-	}
-
-	/* Begin writing to journal. */
-	changeset_t *chs = NULL;
-	WALK_LIST(chs, *src) {
-		ret = changeset_pack(chs, journal);
-		if (ret != KNOT_EOK) {
-			break;
-		}
-	}
-
-	journal_close(journal);
-	return ret;
-}
-
 int journal_store_changeset(changeset_t *change, const char *path, size_t size_limit)
 {
 	if (change == NULL || path == NULL) {

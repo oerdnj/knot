@@ -224,12 +224,6 @@ int zonefile_open(zloader_t *loader, const char *source, const char *origin,
 	}
 	memset(zc, 0, sizeof(zcreator_t));
 
-	zc->z = create_zone_from_name(origin);
-	if (zc->z == NULL) {
-		free(zc);
-		return KNOT_ENOMEM;
-	}
-
 	/* Create file loader. */
 	memset(loader, 0, sizeof(zloader_t));
 	loader->scanner = zs_scanner_create(origin, KNOT_CLASS_IN, 3600,
@@ -248,77 +242,92 @@ int zonefile_open(zloader_t *loader, const char *source, const char *origin,
 	return KNOT_EOK;
 }
 
-zone_contents_t *zonefile_load(zloader_t *loader)
+int zonefile_load(zloader_t *loader)
 {
-	dbg_zload("zload: load: Loading zone, loader: %p.\n", loader);
-	if (!loader) {
-		dbg_zload("zload: load: NULL loader!\n");
-		return NULL;
-	}
-
 	zcreator_t *zc = loader->creator;
-	const knot_dname_t *zname = zc->z->apex->owner;
+	zone_t *zone = zc->up->zone;
+	const knot_dname_t *zname = zone->name;
 
-	assert(zc);
+	// Load zone contents from a file.
 	int ret = zs_scanner_parse_file(loader->scanner, loader->source);
 	if (ret != 0 && loader->scanner->error_counter == 0) {
 		ERROR(zname, "failed to load zone, file '%s' (%s)",
 		      loader->source, zs_strerror(loader->scanner->error_code));
-		goto fail;
+		return KNOT_EPARSEFAIL;
 	}
 
 	if (zc->ret != KNOT_EOK) {
 		ERROR(zname, "failed to load zone, file '%s' (%s)",
 		      loader->source, knot_strerror(zc->ret));
-		goto fail;
+		return ret;
 	}
 
 	if (loader->scanner->error_counter > 0) {
 		ERROR(zname, "failed to load zone, file '%s', %"PRIu64" errors",
 		      loader->source, loader->scanner->error_counter);
-		goto fail;
+		return KNOT_EPARSEFAIL;
 	}
 
-	if (!node_rrtype_exists(loader->creator->z->apex, KNOT_RRTYPE_SOA)) {
+	if (!node_rrtype_exists(zone_update_get_apex(zc->up), KNOT_RRTYPE_SOA)) {
 		ERROR(zname, "no SOA record, file '%s'", loader->source);
-		goto fail;
+		return KNOT_EMALF;
+	}
+	
+	// Apply possible changes to the zone contents.
+	if (!journal_exists(zone->conf->ixfr_db)) {
+		return KNOT_EOK;
 	}
 
-	zone_update_t up;
-	zone_update_init(&up, zc->z, NULL);
+	/* Fetch SOA serial. */
+	const uint32_t serial = zone_update_serial(zc->up);
 
-	int kret = zone_adjust(&up);
-	if (kret != KNOT_EOK) {
-		ERROR(zname, "failed to finalize zone contents (%s)",
-		      knot_strerror(kret));
-		goto fail;
-	}
-
-	if (loader->semantic_checks) {
-		int check_level = SEM_CHECK_UNSIGNED;
-		knot_rrset_t soa_rr = node_rrset(zc->z->apex, KNOT_RRTYPE_SOA);
-		assert(!knot_rrset_empty(&soa_rr)); // In this point, SOA has to exist
-		const bool have_nsec3param =
-			node_rrtype_exists(zc->z->apex, KNOT_RRTYPE_NSEC3PARAM);
-		if (zone_contents_is_signed(zc->z) && !have_nsec3param) {
-
-			/* Set check level to DNSSEC. */
-			check_level = SEM_CHECK_NSEC;
-		} else if (zone_contents_is_signed(zc->z) && have_nsec3param) {
-			check_level = SEM_CHECK_NSEC3;
+	list_t history;
+	init_list(&history);
+	ret = journal_load_changesets(zone, &history, serial, serial - 1);
+	if ((ret != KNOT_EOK && ret != KNOT_ERANGE) || EMPTY_LIST(history)) {
+		changesets_free(&history);
+		/* Absence of records is not an error. */
+		if (ret == KNOT_ENOENT) {
+			return KNOT_EOK;
+		} else {
+			return ret;
 		}
-		err_handler_t err_handler;
-		err_handler_init(&err_handler);
-		zone_do_sem_checks(zc->z, check_level,
-		                   &err_handler, NULL, NULL);
-		INFO(zname, "semantic check, completed");
 	}
 
-	return zc->z;
+	// Apply changes fetched from jurnal. */
+	changeset_t *ch, *nxt;
+	WALK_LIST_DELSAFE(ch, nxt, history) {
+		ret = apply_changeset_directly(zc->up->new_cont, ch);
+		if (ret != KNOT_EOK) {
+			changesets_free(&history);
+			return ret;
+		}
+		rem_node(ch);
+		changeset_free(ch);
+	}
 
-fail:
-	zone_contents_deep_free(&zc->z);
-	return NULL;
+	return ret;
+
+#warning move this to the commit stage,or better yet an event
+//	if (loader->semantic_checks) {
+//		int check_level = SEM_CHECK_UNSIGNED;
+//		knot_rrset_t soa_rr = node_rrset(zc->z->apex, KNOT_RRTYPE_SOA);
+//		assert(!knot_rrset_empty(&soa_rr)); // In this point, SOA has to exist
+//		const bool have_nsec3param =
+//			node_rrtype_exists(zc->z->apex, KNOT_RRTYPE_NSEC3PARAM);
+//		if (zone_contents_is_signed(zc->z) && !have_nsec3param) {
+
+//			/* Set check level to DNSSEC. */
+//			check_level = SEM_CHECK_NSEC;
+//		} else if (zone_contents_is_signed(zc->z) && have_nsec3param) {
+//			check_level = SEM_CHECK_NSEC3;
+//		}
+//		err_handler_t err_handler;
+//		err_handler_init(&err_handler);
+//		zone_do_sem_checks(zc->z, check_level,
+//		                   &err_handler, NULL, NULL);
+//		INFO(zname, "semantic check, completed");
+//	}
 }
 
 /*! \brief Return zone file mtime. */

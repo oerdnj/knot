@@ -234,78 +234,46 @@ int event_reload(zone_t *zone)
 	assert(zone);
 
 	/* Take zone file mtime and load it. */
-	time_t mtime = zonefile_mtime(zone->conf->file);
-	uint32_t dnssec_refresh = time(NULL);
-	conf_zone_t *zone_config = zone->conf;
+#warning lost the mtime
+	const time_t mtime = zonefile_mtime(zone->conf->file);
 	zone_update_t up;
 	int ret = zone_update_init(&up, zone, UPDATE_FULL | UPDATE_SIGN);
 	if (ret != KNOT_EOK) {
 		return ret;
 	}
 
-	ret = zone_load_contents(&up);
+	// Load zone and possible changes from persistent storage.
+	ret = zone_update_load_contents(&up);
 	if (ret != KNOT_EOK) {
 		return ret;
 	}
 
-	/* Store zonefile serial and apply changes from the journal. */
-	zone->zonefile_serial = zone_contents_serial(up.new_cont);
-	int result = zone_load_journal(zone, contents);
-	if (result != KNOT_EOK) {
-		goto fail;
+	// Commit the change - sign and publish new zone contents.
+	ret = zone_update_commit(&up);
+	zone_update_clear(&up);
+	if (ret != KNOT_EOK) {
+		return ret;
 	}
 
-	/* Post load actions - calculate delta, sign with DNSSEC... */
-	/*! \todo issue #242 dnssec signing should occur in the special event */
-	result = zone_load_post(contents, zone, &dnssec_refresh);
-	if (result != KNOT_EOK) {
-		if (result == KNOT_ESPACE) {
-			log_zone_error(zone->name, "journal size is too small "
-			               "to fit the changes");
-		} else {
-			log_zone_error(zone->name, "failed to store changes into "
-			               "journal (%s)", knot_strerror(result));
-		}
-		goto fail;
-	}
-
-	zone_set_payload(zone);
-
-	/* Everything went alright, switch the contents. */
+	// Store zone serial.
+	zone->zonefile_serial = zone_update_serial(&up);
 	zone->zonefile_mtime = mtime;
-	zone_contents_t *old = zone_switch_contents(zone, contents);
-	uint32_t old_serial = zone_contents_serial(old);
-	if (old != NULL) {
-		synchronize_rcu();
-		zone_contents_deep_free(&old);
-	}
+	// Set max UDP payload.
+	zone_set_payload(zone);
 
 	/* Schedule notify and refresh after load. */
 	if (zone_master(zone)) {
 		zone_events_schedule(zone, ZONE_EVENT_REFRESH, ZONE_EVENT_NOW);
 	}
-	if (!zone_contents_is_empty(contents)) {
+	if (!zone_contents_is_empty(zone->contents)) {
 		zone_events_schedule(zone, ZONE_EVENT_NOTIFY, ZONE_EVENT_NOW);
 		zone->bootstrap_retry = ZONE_EVENT_NOW;
 	}
 
-	/* Schedule zone resign. */
-	if (zone->conf->dnssec_enable) {
-		schedule_dnssec(zone, dnssec_refresh);
-	}
-
 	/* Periodic execution. */
-	zone_events_schedule(zone, ZONE_EVENT_FLUSH, zone_config->dbsync_timeout);
-
-	uint32_t current_serial = zone_contents_serial(zone->contents);
-	log_zone_info(zone->name, "loaded, serial %u -> %u",
-	              old_serial, current_serial);
+	zone_events_schedule(zone, ZONE_EVENT_FLUSH, zone->conf->dbsync_timeout);
 
 	return zone_events_write_persistent(zone);
-
-fail:
-	zone_contents_deep_free(&contents);
-	return result;
 }
 
 int event_refresh(zone_t *zone)
