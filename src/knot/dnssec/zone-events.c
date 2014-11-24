@@ -17,14 +17,14 @@
 #include <assert.h>
 #include <time.h>
 
-#include "common/mem.h"
+#include "libknot/internal/mem.h"
 #include "knot/conf/conf.h"
 #include "libknot/dnssec/policy.h"
 #include "knot/dnssec/zone-events.h"
 #include "knot/dnssec/zone-keys.h"
 #include "knot/dnssec/zone-nsec.h"
 #include "knot/dnssec/zone-sign.h"
-#include "common/debug.h"
+#include "knot/common/debug.h"
 #include "knot/zone/zone.h"
 
 static int zone_sign(zone_update_t *up, const bool force, uint32_t *refresh_at)

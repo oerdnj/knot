@@ -23,8 +23,8 @@
 #include "knot/updates/zone-update.h"
 #include "knot/zone/zonefile.h"
 #include "knot/zone/adjust.h"
-#include "common/macros.h"
-#include "common/lists.h"
+#include "libknot/internal/lists.h"
+#include "libknot/internal/macros.h"
 #include "libknot/rrtype/soa.h"
 #include "libknot/rrtype/rrsig.h"
 
@@ -247,7 +247,7 @@ static int apply_remove(zone_contents_t *contents, changeset_t *chset)
 {
 	changeset_iter_t itt;
 	changeset_iter_rem(&itt, chset, false);
-	
+
 	knot_rrset_t rr = changeset_iter_next(&itt);
 	while (!knot_rrset_empty(&rr)) {
 		// Find node for this owner
@@ -418,7 +418,67 @@ static int prepare_zone_copy(zone_contents_t *old_contents,
 	return KNOT_EOK;
 }
 
+/*! \brief Removes empty nodes from updated zone a does zone adjusting. */
+static int finalize_updated_zone(zone_contents_t *contents_copy,
+                                 bool set_nsec3_names)
+{
+	if (contents_copy == NULL) {
+		return KNOT_EINVAL;
+	}
+
+	if (set_nsec3_names) {
+		return zone_contents_adjust_full(contents_copy, NULL, NULL);
+	} else {
+		return zone_contents_adjust_pointers(contents_copy);
+	}
+}
+
 /* ------------------------------- API -------------------------------------- */
+
+int apply_changesets(zone_t *zone, list_t *chsets, zone_contents_t **new_contents)
+{
+	if (zone == NULL || chsets == NULL || EMPTY_LIST(*chsets) || new_contents == NULL) {
+		return KNOT_EINVAL;
+	}
+
+	zone_contents_t *old_contents = zone->contents;
+	if (!old_contents) {
+		return KNOT_EINVAL;
+	}
+
+	zone_contents_t *contents_copy = NULL;
+	int ret = prepare_zone_copy(old_contents, &contents_copy);
+	if (ret != KNOT_EOK) {
+		return ret;
+	}
+
+	/*
+	 * Apply the changesets.
+	 */
+	changeset_t *set = NULL;
+	const bool master = (zone_master(zone) == NULL);
+	WALK_LIST(set, *chsets) {
+		ret = apply_single(contents_copy, set, master);
+		if (ret != KNOT_EOK) {
+			updates_rollback(chsets);
+			update_free_zone(&contents_copy);
+			return ret;
+		}
+	}
+
+	assert(contents_copy->apex != NULL);
+
+	ret = finalize_updated_zone(contents_copy, true);
+	if (ret != KNOT_EOK) {
+		updates_rollback(chsets);
+		update_free_zone(&contents_copy);
+		return ret;
+	}
+
+	*new_contents = contents_copy;
+
+	return KNOT_EOK;
+}
 
 int apply_changeset(zone_t *zone, changeset_t *change, zone_contents_t **new_contents)
 {
@@ -444,12 +504,41 @@ int apply_changeset(zone_t *zone, changeset_t *change, zone_contents_t **new_con
 		update_free_zone(&contents_copy);
 		return ret;
 	}
-	
-#warning do adjust
-	
+
+	ret = finalize_updated_zone(contents_copy, true);
+	if (ret != KNOT_EOK) {
+		update_rollback(change);
+		update_free_zone(&contents_copy);
+		return ret;
+	}
+
 	*new_contents = contents_copy;
-	
+
 	return KNOT_EOK;
+}
+
+int apply_changesets_directly(zone_contents_t *contents, list_t *chsets)
+{
+	if (contents == NULL || chsets == NULL) {
+		return KNOT_EINVAL;
+	}
+
+	changeset_t *set = NULL;
+	WALK_LIST(set, *chsets) {
+		const bool master = true; // Only DNSSEC changesets are applied directly.
+		int ret = apply_single(contents, set, master);
+		if (ret != KNOT_EOK) {
+			updates_cleanup(chsets);
+			return ret;
+		}
+	}
+
+	int ret = finalize_updated_zone(contents, true);
+	if (ret != KNOT_EOK) {
+		updates_cleanup(chsets);
+	}
+
+	return ret;
 }
 
 int apply_changeset_directly(zone_contents_t *contents, changeset_t *ch)
@@ -457,15 +546,20 @@ int apply_changeset_directly(zone_contents_t *contents, changeset_t *ch)
 	if (contents == NULL || ch == NULL) {
 		return KNOT_EINVAL;
 	}
-	
+
 	const bool master = true; // Only DNSSEC changesets are applied directly.
 	int ret = apply_single(contents, ch, master);
 	if (ret != KNOT_EOK) {
 		update_cleanup(ch);
 		return ret;
 	}
-	
-#warning do adjust
+
+	ret = finalize_updated_zone(contents, true);
+	if (ret != KNOT_EOK) {
+		update_cleanup(ch);
+		return ret;
+	}
+
 	return KNOT_EOK;
 }
 
@@ -481,6 +575,18 @@ void update_cleanup(changeset_t *change)
 	}
 }
 
+void updates_cleanup(list_t *chgs)
+{
+	if (chgs == NULL || EMPTY_LIST(*chgs)) {
+		return;
+	}
+
+	changeset_t *change = NULL;
+	WALK_LIST(change, *chgs) {
+		update_cleanup(change);
+	};
+}
+
 void update_rollback(changeset_t *change)
 {
 	if (change) {
@@ -493,11 +599,23 @@ void update_rollback(changeset_t *change)
 	}
 }
 
+void updates_rollback(list_t *chgs)
+{
+	if (chgs != NULL && !EMPTY_LIST(*chgs)) {
+		changeset_t *change = NULL;
+		WALK_LIST(change, *chgs) {
+			update_rollback(change);
+		}
+	}
+}
+
 void update_free_zone(zone_contents_t **contents)
 {
 	zone_tree_apply((*contents)->nodes, free_additional, NULL);
 	zone_tree_deep_free(&(*contents)->nodes);
 	zone_tree_deep_free(&(*contents)->nsec3_nodes);
+
+	knot_nsec3param_free(&(*contents)->nsec3_params);
 
 	free(*contents);
 	*contents = NULL;

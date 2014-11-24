@@ -63,7 +63,7 @@ typedef enum journal_flag_t {
  * Each node represents journal entry and points
  * to position of the data in the permanent storage.
  */
-typedef struct journal_node_t
+typedef struct journal_node
 {
 	uint64_t id;    /*!< Node ID. */
 	uint16_t flags; /*!< Node flags. */
@@ -176,6 +176,7 @@ bool journal_exists(const char *path);
  * \retval KNOT_EBUSY when journal is full.
  * \return < KNOT_EOK on other errors.
  */
+int journal_store_changesets(list_t *src, const char *path, size_t size_limit);
 int journal_store_changeset(changeset_t *change, const char *path, size_t size_limit);
 
 int journal_load_changesets(const struct zone_t *zone, list_t *dst, uint32_t from, uint32_t to);

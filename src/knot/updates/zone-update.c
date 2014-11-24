@@ -14,8 +14,6 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "libknot/rrtype/soa.h"
-
 #include "knot/updates/zone-update.h"
 #include "knot/updates/changesets.h"
 #include "knot/updates/apply.h"
@@ -23,8 +21,8 @@
 #include "knot/zone/zonefile.h"
 #include "knot/dnssec/zone-events.h"
 #include "knot/dnssec/zone-sign.h"
-#include "common/lists.h"
-#include "common/mempool.h"
+#include "libknot/internal/lists.h"
+#include "libknot/internal/mempool.h"
 
 static int add_to_node(zone_node_t *node, const zone_node_t *add_node,
                        mm_ctx_t *mm)

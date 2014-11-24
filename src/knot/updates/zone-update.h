@@ -97,3 +97,4 @@ int zone_update_iter_next(zone_update_iter_t *it);
 const zone_node_t *zone_update_iter_val(zone_update_iter_t *it);
 int zone_update_load_contents(zone_update_t *up);
 
+/*! @} */

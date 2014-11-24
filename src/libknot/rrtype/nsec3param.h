@@ -57,4 +57,3 @@ const uint8_t *knot_nsec3param_salt(const knot_rdataset_t *rrs, size_t pos)
 	KNOT_RDATASET_CHECK(rrs, pos, return 0);
 	return knot_rdata_offset(rrs, pos, 5);
 }
-
