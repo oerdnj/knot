@@ -92,7 +92,7 @@ static bool parse_nsec3_params(knot_rdataset_t *params, const char *salt,
 	uint8_t data_buff[data_size];
 	data_buff[0] = algo;
 	data_buff[1] = 0; // flags
-	knot_wire_write_u16(data_buff + 2, iter);
+	wire_write_u16(data_buff + 2, iter);
 	data_buff[4] = salt_length;
 	memcpy(data_buff + 5, salt_data, salt_length);
 	memcpy(knot_rdata_data(data), data_buff, data_size);

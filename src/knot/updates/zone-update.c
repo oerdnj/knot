@@ -23,6 +23,7 @@
 #include "knot/dnssec/zone-sign.h"
 #include "libknot/internal/lists.h"
 #include "libknot/internal/mempool.h"
+#include "libknot/rrtype/soa.h"
 
 static int add_to_node(zone_node_t *node, const zone_node_t *add_node,
                        mm_ctx_t *mm)

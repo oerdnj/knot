@@ -1115,7 +1115,7 @@ static int load_changeset(journal_t *journal, journal_node_t *n, const zone_t *z
 	return KNOT_EOK;
 }
 
-int journal_load_changesets(const zone_t *zone, list_t *dst,
+int journal_load_changesets(const struct zone *zone, list_t *dst,
                             uint32_t from, uint32_t to)
 {
 	int ret = journal_walk(zone->conf->ixfr_db, from, to, &load_changeset, zone, dst);

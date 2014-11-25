@@ -425,12 +425,8 @@ static int finalize_updated_zone(zone_contents_t *contents_copy,
 	if (contents_copy == NULL) {
 		return KNOT_EINVAL;
 	}
-
-	if (set_nsec3_names) {
-		return zone_contents_adjust_full(contents_copy, NULL, NULL);
-	} else {
-		return zone_contents_adjust_pointers(contents_copy);
-	}
+	
+#warning adjust
 }
 
 /* ------------------------------- API -------------------------------------- */
@@ -614,8 +610,6 @@ void update_free_zone(zone_contents_t **contents)
 	zone_tree_apply((*contents)->nodes, free_additional, NULL);
 	zone_tree_deep_free(&(*contents)->nodes);
 	zone_tree_deep_free(&(*contents)->nsec3_nodes);
-
-	knot_nsec3param_free(&(*contents)->nsec3_params);
 
 	free(*contents);
 	*contents = NULL;

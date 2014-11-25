@@ -179,7 +179,7 @@ bool journal_exists(const char *path);
 int journal_store_changesets(list_t *src, const char *path, size_t size_limit);
 int journal_store_changeset(changeset_t *change, const char *path, size_t size_limit);
 
-int journal_load_changesets(const struct zone_t *zone, list_t *dst, uint32_t from, uint32_t to);
+int journal_load_changesets(const struct zone *zone, list_t *dst, uint32_t from, uint32_t to);
 
 /*! \brief Function for unmarking dirty nodes. */
 /*!
