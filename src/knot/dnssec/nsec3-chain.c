@@ -223,8 +223,7 @@ static void nsec3_fill_rdata(uint8_t *rdata, const knot_rdataset_t *params,
 	rdata += 1;
 	*rdata = 0;                                       // flags
 	rdata += 1;
-	knot_wire_write_u16(rdata,
-	                    knot_nsec3param_iterations(params, 0));   // iterations
+	wire_write_u16(rdata, knot_nsec3param_iterations(params, 0));   // iterations
 	rdata += 2;
 	const uint8_t salt_len = knot_nsec3param_salt_length(params, 0);
 	*rdata = salt_len;  // salt length

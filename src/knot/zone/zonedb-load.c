@@ -18,7 +18,6 @@
 #include <sys/stat.h>
 
 #include "knot/zone/zonedb-load.h"
-#include "knot/zone/zone-load.h"
 #include "knot/conf/conf.h"
 #include "libknot/rrtype/soa.h"
 #include "knot/zone/zone.h"
@@ -62,7 +61,7 @@ static zone_status_t zone_file_status(const zone_t *old_zone,
 			// Deferred flush.
 			return ZONE_STATUS_FOUND_CURRENT;
 		} else {
-			return zone_load_can_bootstrap(conf) ? ZONE_STATUS_BOOSTRAP \
+			return !EMPTY_LIST(conf->acl.xfr_in) ? ZONE_STATUS_BOOSTRAP \
 			                                     : ZONE_STATUS_NOT_FOUND;
 		}
 	} else {

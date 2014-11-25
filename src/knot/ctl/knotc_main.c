@@ -35,7 +35,6 @@
 #include "knot/conf/conf.h"
 #include "knot/server/tcp-handler.h"
 #include "knot/zone/zonefile.h"
-#include "knot/zone/zone-load.h"
 
 /*! \brief Controller flags. */
 enum knotc_flag_t {
@@ -721,17 +720,9 @@ static int cmd_checkzone(int argc, char *argv[], unsigned flags)
 			continue;
 		}
 
-		/* Create zone loader context. */
-#warning not like this
-//		zone_contents_t *loaded_zone = zone_load_contents(zone);
-//		if (loaded_zone == NULL) {
-//			zone->conf = NULL;
-//			zone_free(&zone);
-//			rc = 1;
-//			continue;
-//		}
+#warning do a parser dry run
 
-		log_zone_str_info(zone->name, "zone is valid");
+		log_zone_info(zone->name, "zone is valid");
 		zone->conf = NULL;
 		zone_free(&zone);
 	}

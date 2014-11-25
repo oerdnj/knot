@@ -27,7 +27,6 @@
 #include "knot/updates/zone-update.h"
 #include "knot/dnssec/zone-events.h"
 #include "knot/zone/timers.h"
-#include "knot/zone/zone-load.h"
 #include "knot/zone/zonefile.h"
 #include "knot/zone/events/events.h"
 #include "knot/zone/events/handlers.h"
@@ -227,6 +226,25 @@ static void start_expire_timer(zone_t *zone, const knot_rdataset_t *soa)
 	zone_events_schedule(zone, ZONE_EVENT_EXPIRE, soa_graceful_expire(soa));
 }
 
+/*! \brief Check zone configuration constraints. */
+static void zone_set_payload(zone_t *zone)
+{
+	/* Bootstrapped zone, no checks apply. */
+	if (zone->contents == NULL) {
+		return;
+	}
+
+	/* Check minimum EDNS0 payload if signed. (RFC4035/sec. 3) */
+	if (zone_contents_is_signed(zone->contents)) {
+		if (conf()->max_udp_payload < KNOT_EDNS_MIN_DNSSEC_PAYLOAD) {
+			log_zone_warning(zone->name, "EDNS payload size is "
+			                 "lower than %u bytes for DNSSEC zone",
+					 KNOT_EDNS_MIN_DNSSEC_PAYLOAD);
+			conf()->max_udp_payload = KNOT_EDNS_MIN_DNSSEC_PAYLOAD;
+		}
+	}
+}
+
 /* -- zone events handling callbacks --------------------------------------- */
 
 int event_reload(zone_t *zone)
@@ -258,6 +276,7 @@ int event_reload(zone_t *zone)
 	// Store zone serial.
 	zone->zonefile_serial = zone_update_serial(&up);
 	zone->zonefile_mtime = mtime;
+
 	// Set max UDP payload.
 	zone_set_payload(zone);
 

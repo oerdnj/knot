@@ -227,7 +227,7 @@ const zone_node_t *zone_update_get_apex(zone_update_t *update)
 	return zone_update_get_node(update, update->zone->name);
 }
 
-const zone_node_t *zone_update_serial(zone_update_t *update)
+uint32_t zone_update_serial(zone_update_t *update)
 {
 	const zone_node_t *apex = zone_update_get_apex(update);
 	if (apex) {
@@ -564,7 +564,7 @@ int zone_update_load_contents(zone_update_t *up)
 	/* Set the zone type (master/slave). If zone has no master set, we
 	 * are the primary master for this zone (i.e. zone type = master).
 	 */
-	zl.creator->master = !zone_load_can_bootstrap(up->zone->conf);
+	zl.creator->master = !EMPTY_LIST(up->conf->acl.xfr_in);
 
 	zone_contents_t *zone_contents = zonefile_load(&zl);
 	zonefile_close(&zl);

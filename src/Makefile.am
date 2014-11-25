@@ -313,8 +313,6 @@ libknotd_la_SOURCES =				\
 	knot/zone/zone-diff.h			\
 	knot/zone/zone-dump.c			\
 	knot/zone/zone-dump.h			\
-	knot/zone/zone-load.c			\
-	knot/zone/zone-load.h			\
 	knot/zone/zone-tree.c			\
 	knot/zone/zone-tree.h			\
 	knot/zone/zone.c			\

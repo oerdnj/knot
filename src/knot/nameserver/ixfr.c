@@ -40,11 +40,12 @@ enum ixfr_states {
 /*! \brief Extended structure for IXFR-in/IXFR-out processing. */
 struct ixfr_proc {
 	struct xfr_proc proc;          /* Generic transfer processing context. */
+	int state;                     /* IXFR-in state. */
 	changeset_iter_t cur;          /* Current changeset iteration state.*/
 	knot_rrset_t cur_rr;           /* Currently processed RRSet. */
-	int state;                     /* IXFR-in state. */
 	knot_rrset_t *final_soa;       /* First SOA received via IXFR. */
-	list_t changesets;             /* Processed changesets. */
+	zone_update_t up;              /* IXFR-in are stored here. */
+	list_t changesets;             /* IXFR-out changesets. */
 	size_t change_count;           /* Count of changesets received. */
 	zone_t *zone;                  /* Modified zone - for journal access. */
 	mm_ctx_t *mm;                  /* Memory context for RR allocations. */
@@ -52,6 +53,8 @@ struct ixfr_proc {
 	const knot_rrset_t *soa_from;
 	const knot_rrset_t *soa_to;
 };
+
+#warning extend the structure above
 
 /* IXFR-out-specific logging (internal, expects 'qdata' variable set). */
 #define IXFROUT_LOG(severity, msg...) \
@@ -379,9 +382,13 @@ static int ixfrin_finalize(struct answer_data *adata)
 	struct ixfr_proc *ixfr = adata->ext;
 	assert(ixfr->state == IXFR_DONE);
 
-#warning commit update here
+	int ret = zone_update_commit(&ixfr->up);
+	zone_update_clear(&ixfr->up);
+	if (ret != KNOT_EOK) {
+		return ret;
+	}
 
-	struct timeval now = {0};
+	struct timeval now;
 	gettimeofday(&now, NULL);
 	IXFRIN_LOG(LOG_INFO,
 	           "finished, %.02f seconds, %u messages, %u bytes",
@@ -704,6 +711,7 @@ int ixfr_process_answer(knot_pkt_t *pkt, struct answer_data *adata)
 		NS_NEED_TSIG_SIGNED(&adata->param->tsig_ctx, 0);
 		int fret = ixfrin_finalize(adata);
 		if (fret != KNOT_EOK) {
+			IXFRIN_LOG(LOG_WARNING, "failed (%s)", knot_strerror(ret));
 			ret = KNOT_NS_PROC_FAIL;
 		}
 	}

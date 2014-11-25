@@ -14,7 +14,7 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 /*!
- * \file zone-load.h
+ * \file zonefile.h
  *
  * \author Marek Vavrusa <marek.vavrusa@nic.cz>
  * \author Jan Kadlec <jan.kadlec@nic.cz>
