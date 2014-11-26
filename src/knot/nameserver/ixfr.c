@@ -435,8 +435,7 @@ static int solve_soa_del(const knot_rrset_t *rr, struct ixfr_proc *proc)
 		return KNOT_ENOMEM;
 	}
 
-	// Add changeset.
-	add_tail(&proc->changesets, &change->n);
+	// Increase delta count.
 	++proc->change_count;
 
 	return KNOT_EOK;

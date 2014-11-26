@@ -77,7 +77,7 @@ int zone_update_init(zone_update_t *update, zone_t *zone, zone_update_flags_t fl
  */
 const zone_node_t *zone_update_get_node(zone_update_t *update,
                                         const knot_dname_t *dname);
-const zone_node_t *zone_update_get_apex(zone_update_t *update);
+const zone_node_t *zone_update_get_apex(const zone_update_t *update);
 uint32_t zone_update_serial(zone_update_t *update);
 
 /*!

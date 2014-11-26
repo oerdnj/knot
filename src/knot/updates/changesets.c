@@ -219,71 +219,6 @@ int changeset_rem_rrset(changeset_t *ch, const knot_rrset_t *rrset)
 	return add_rr_to_zone(ch->remove, rrset);
 }
 
-int changeset_merge(changeset_t *ch1, const changeset_t *ch2)
-{
-	changeset_iter_t itt;
-	changeset_iter_add(&itt, ch2, false);
-
-	knot_rrset_t rrset = changeset_iter_next(&itt);
-	while (!knot_rrset_empty(&rrset)) {
-		int ret = changeset_add_rrset(ch1, &rrset);
-		if (ret != KNOT_EOK) {
-			changeset_iter_clear(&itt);
-			return ret;
-		}
-		rrset = changeset_iter_next(&itt);
-	}
-	changeset_iter_clear(&itt);
-
-	changeset_iter_rem(&itt, ch2, false);
-
-	rrset = changeset_iter_next(&itt);
-	while (!knot_rrset_empty(&rrset)) {
-		int ret = changeset_rem_rrset(ch1, &rrset);
-		if (ret != KNOT_EOK) {
-			changeset_iter_clear(&itt);
-			return ret;
-		}
-		rrset = changeset_iter_next(&itt);
-	}
-	changeset_iter_clear(&itt);
-
-	// Use soa_to and serial from the second changeset
-	// soa_to from the first changeset is redundant, delete it
-	knot_rrset_t *soa_copy = knot_rrset_copy(ch2->soa_to, NULL);
-	if (soa_copy == NULL && ch2->soa_to) {
-		return KNOT_ENOMEM;
-	}
-	knot_rrset_free(&ch1->soa_to, NULL);
-	ch1->soa_to = soa_copy;
-
-	return KNOT_EOK;
-}
-
-void changesets_clear(list_t *chgs)
-{
-	if (chgs) {
-		changeset_t *chg, *nxt;
-		WALK_LIST_DELSAFE(chg, nxt, *chgs) {
-			changeset_clear(chg);
-			rem_node(&chg->n);
-		}
-		init_list(chgs);
-	}
-}
-
-void changesets_free(list_t *chgs)
-{
-	if (chgs) {
-		changeset_t *chg, *nxt;
-		WALK_LIST_DELSAFE(chg, nxt, *chgs) {
-			rem_node(&chg->n);
-			changeset_free(chg);
-		}
-		init_list(chgs);
-	}
-}
-
 void changeset_clear(changeset_t *ch)
 {
 	if (ch == NULL) {
@@ -296,9 +231,6 @@ void changeset_clear(changeset_t *ch)
 
 	knot_rrset_free(&ch->soa_from, NULL);
 	knot_rrset_free(&ch->soa_to, NULL);
-
-	// Delete binary data
-	free(ch->data);
 }
 
 void changeset_free(changeset_t *ch)

@@ -32,15 +32,12 @@
 
 /*! \brief One zone change, from 'soa_from' to 'soa_to'. */
 typedef struct {
-	node_t n;                 /*!< List node. */
 	knot_rrset_t *soa_from;   /*!< Start SOA. */
 	knot_rrset_t *soa_to;     /*!< Destination SOA. */
 	zone_contents_t *add;     /*!< Change additions. */
 	zone_contents_t *remove;  /*!< Change removals. */
 	list_t old_data;          /*!< Old data, to be freed after successful update. */
 	list_t new_data;          /*!< New data, to be freed after failed update. */
-	size_t size;              /*!< Size of serialized changeset. */
-	uint8_t *data;            /*!< Serialized changeset. */
 } changeset_t;
 
 /*! \brief Changeset iteration structure. */
@@ -107,30 +104,6 @@ int changeset_add_rrset(changeset_t *ch, const knot_rrset_t *rrset);
  * \return KNOT_E*
  */
 int changeset_rem_rrset(changeset_t *ch, const knot_rrset_t *rrset);
-
-/*!
- * \brief Merges two changesets together. Legacy, to be removed with new zone API.
- *
- * \param ch1  Merge into this changeset.
- * \param ch2  Merge this changeset.
- *
- * \return KNOT_E*
- */
-int changeset_merge(changeset_t *ch1, const changeset_t *ch2);
-
-/*!
- * \brief Clears changesets in list. Changesets are not free'd. Legacy.
- *
- * \param chgs  Changeset list to clear.
- */
-void changesets_clear(list_t *chgs);
-
-/*!
- * \brief Free changesets in list. Legacy.
- *
- * \param chgs  Changeset list to free.
- */
-void changesets_free(list_t *chgs);
 
 /*!
  * \brief Clear single changeset.

@@ -222,7 +222,7 @@ const zone_node_t *zone_update_get_node(zone_update_t *update, const knot_dname_
 	return synth_node;
 }
 
-const zone_node_t *zone_update_get_apex(zone_update_t *update)
+const zone_node_t *zone_update_get_apex(const zone_update_t *update)
 {
 	return zone_update_get_node(update, update->zone->name);
 }
@@ -273,7 +273,7 @@ static int sign_update(zone_update_t *update)
 
 	uint32_t refresh_at = 0;
 	const bool full_sign = changeset_empty(&update->change) ||
-	                       dnskey_nsec3param_changed(&update);
+	                       dnskey_nsec3param_changed(update);
 	if (full_sign) {
 		int ret = dnssec_zone_sign(update, &refresh_at);
 		if (ret != KNOT_EOK) {
@@ -564,7 +564,7 @@ int zone_update_load_contents(zone_update_t *up)
 	/* Set the zone type (master/slave). If zone has no master set, we
 	 * are the primary master for this zone (i.e. zone type = master).
 	 */
-	zl.creator->master = !EMPTY_LIST(up->conf->acl.xfr_in);
+	zl.creator->master = !EMPTY_LIST(up->zone->conf->acl.xfr_in);
 
 	zone_contents_t *zone_contents = zonefile_load(&zl);
 	zonefile_close(&zl);
