@@ -3,7 +3,7 @@
  *
  * \author Jan Kadlec <jan.kadlec@nic.cz>
  *
- * \brief API for quering zone that is being updated.
+ * \brief API for updating zone and quering zone that is being updated.
  *
  * \addtogroup server
  * @{

@@ -241,7 +241,7 @@ static int ixfr_answer_init(struct query_data *qdata)
 	memset(xfer, 0, sizeof(struct ixfr_proc));
 	int ret = changeset_init(&xfer->ch, qdata->zone->name);
 	if (ret != KNOT_EOK) {
-		ixfr_answer_cleanup(xfer);
+		mm_free(mm, xfer);
 		return ret;
 	}
 
@@ -256,7 +256,9 @@ static int ixfr_answer_init(struct query_data *qdata)
 	const knot_rrset_t *their_soa = &knot_pkt_section(qdata->query, KNOT_AUTHORITY)->rr[0];
 	ret = ixfr_load_changes(&xfer->ch, qdata->zone, their_soa);
 	if (ret != KNOT_EOK) {
-		ixfr_answer_cleanup(xfer);
+		qdata->ext = xfer;
+		ixfr_answer_cleanup(qdata);
+		qdata->ext = NULL;
 		dbg_ns("%s: failed to load changesets => %d\n", __func__, ret);
 		return ret;
 	}
