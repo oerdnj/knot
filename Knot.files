@@ -362,5 +362,6 @@ src/knot/updates/zone-read.c
 src/knot/updates/zone-lock.c
 src/knot/updates/zone-lock.h
 src/knot/zone/node-ref.c
-src/knot/zone/events/node-ref.h
-src/knot/zone/events/node-ref.c
+src/knot/zone/node-ref.h
+src/knot/zone/adjust.h
+src/knot/zone/adjust.c

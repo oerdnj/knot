@@ -73,6 +73,7 @@ struct query_data {
 	uint16_t packet_type; /*!< Resolved packet type. */
 	knot_pkt_t *query;    /*!< Query to be solved. */
 	const zone_t *zone;   /*!< Zone from which is answered. */
+	zone_read_t *zr;
 	list_t wildcards;     /*!< Visited wildcards. */
 	list_t rrsigs;        /*!< Section RRSIGs. */
 

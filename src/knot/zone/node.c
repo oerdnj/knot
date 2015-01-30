@@ -18,6 +18,7 @@
 #include <stdio.h>
 
 #include "knot/zone/node.h"
+#include "knot/zone/node-ref.h"
 #include "libknot/errcode.h"
 #include "libknot/rrset.h"
 #include "libknot/rdataset.h"
@@ -91,11 +92,16 @@ zone_node_t *node_new(const knot_dname_t *owner, mm_ctx_t *mm)
 		return NULL;
 	}
 	memset(ret, 0, sizeof(*ret));
+	ret->self_ref = node_ref_new(ret);
+	if (ret->self_ref == NULL) {
+		mm_free(mm, ret);
+		return NULL;
+	}
 
 	if (owner) {
 		ret->owner = knot_dname_copy(owner, mm);
 		if (ret->owner == NULL) {
-			mm_free(mm, ret);
+			node_free(&ret);
 			return NULL;
 		}
 	}
@@ -124,6 +130,7 @@ void node_free(zone_node_t **node, mm_ctx_t *mm)
 	if (node == NULL || *node == NULL) {
 		return;
 	}
+	(*node)->self_ref->flags |= REF_
 
 	if ((*node)->rrs != NULL) {
 		mm_free(mm, (*node)->rrs);

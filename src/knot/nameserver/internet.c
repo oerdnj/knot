@@ -288,7 +288,7 @@ static int put_delegation(knot_pkt_t *pkt, struct query_data *qdata)
 {
 	/* Find closest delegation point. */
 	while (!(qdata->node->flags & NODE_FLAGS_DELEG)) {
-		qdata->node = qdata->node->parent;
+		qdata->node = node_ref_get(qdata->node, REF_PARENT, qdata->zr);
 	}
 
 	/* Insert NS record. */

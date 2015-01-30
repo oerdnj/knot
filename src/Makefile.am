@@ -291,6 +291,10 @@ libknotd_la_SOURCES =				\
 	knot/updates/ddns.h			\
 	knot/updates/zone-update.c		\
 	knot/updates/zone-update.h		\
+	knot/updates/zone-read.c		\
+	knot/updates/zone-read.h		\
+	knot/updates/zone-lock.c		\
+	knot/updates/zone-lock.h		\
 	knot/worker/pool.c			\
 	knot/worker/pool.h			\
 	knot/worker/queue.c			\
@@ -303,6 +307,8 @@ libknotd_la_SOURCES =				\
 	knot/zone/events/handlers.h		\
 	knot/zone/events/replan.c		\
 	knot/zone/events/replan.h		\
+	knot/zone/node-ref.c			\
+	knot/zone/node-ref.h			\
 	knot/zone/node.c			\
 	knot/zone/node.h			\
 	knot/zone/semantic-check.c		\

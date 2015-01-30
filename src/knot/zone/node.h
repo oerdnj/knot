@@ -40,13 +40,13 @@ struct rr_data;
  *        name in a zone.
  */
 typedef struct zone_node {
-	node_ref_t *self_ref;
+	struct node_ref *self_ref;
 	knot_dname_t *owner; /*!< Domain name being the owner of this node. */
-	node_ref_t *parent; /*!< Parent node in the name hierarchy. */
+	struct node_ref *parent; /*!< Parent node in the name hierarchy. */
 	/*! \brief Array with data of RRSets belonging to this node. */
 	struct rr_data *rrs;
-	node_ref_t *prev; /*! Previous node in canonical order. */
-	node_ref_t *nsec3_node; /*! NSEC3 node corresponding to this node. */
+	struct node_ref *prev; /*! Previous node in canonical order. */
+	struct node_ref *nsec3_node; /*! NSEC3 node corresponding to this node. */
 	uint32_t children; /*!< Count of children nodes in DNS hierarchy. */
 	uint16_t rrset_count; /*!< Number of RRSets stored in the node. */
 	uint8_t flags; /*!< \ref node_flags enum. */
