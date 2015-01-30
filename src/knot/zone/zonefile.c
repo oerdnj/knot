@@ -280,12 +280,17 @@ int zonefile_load(zloader_t *loader)
 	/* Fetch SOA serial. */
 	const uint32_t serial = zone_update_serial(zc->up);
 
-	list_t history;
-	init_list(&history);
-	ret = journal_load_changesets(zone, &history, serial, serial - 1);
-	if ((ret != KNOT_EOK && ret != KNOT_ERANGE) || EMPTY_LIST(history)) {
-		changesets_free(&history);
+	changeset_t ch;
+	ret = changeset_init(&ch, zname);
+	if (ret != KNOT_EOK) {
+		return ret;
+	}
+
+	ret = journal_load_changesets(zone, &ch, serial, serial - 1);
+	if ((ret != KNOT_EOK && ret != KNOT_ERANGE) || changeset_empty(&ch)) {
+		changeset_clear(&ch);
 		/* Absence of records is not an error. */
+#warning this loads the whole thing and then discards it if there's not enough data. not good.
 		if (ret == KNOT_ENOENT) {
 			return KNOT_EOK;
 		} else {
@@ -294,17 +299,8 @@ int zonefile_load(zloader_t *loader)
 	}
 
 	// Apply changes fetched from jurnal. */
-	changeset_t *ch, *nxt;
-	WALK_LIST_DELSAFE(ch, nxt, history) {
-		ret = apply_changeset_directly(zc->up->new_cont, ch);
-		if (ret != KNOT_EOK) {
-			changesets_free(&history);
-			return ret;
-		}
-		rem_node(ch);
-		changeset_free(ch);
-	}
-
+	ret = apply_changeset_directly(zc->up->new_cont, &ch);
+	changeset_clear(&ch);
 	return ret;
 
 #warning move this to the commit stage,or better yet an event
