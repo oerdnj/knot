@@ -370,7 +370,6 @@ static int zone_contents_find_in_tree(zone_tree_t *tree,
 
 zone_contents_t *zone_contents_new(const knot_dname_t *apex_name)
 {
-	dbg_zone("%s(%p)\n", __func__, apex_name);
 	if (apex_name == NULL) {
 		return NULL;
 	}
@@ -1216,7 +1215,7 @@ zone_node_t *zone_contents_get_node_for_rr(zone_contents_t *zone, const knot_rrs
 	}
 }
 
-zone_node_t *zone_contents_find_node_for_rr(zone_contents_t *zone, const knot_rrset_t *rrset)
+zone_node_t *zone_contents_find_node_for_rr(const zone_contents_t *zone, const knot_rrset_t *rrset)
 {
 	if (zone == NULL || rrset == NULL) {
 		return NULL;

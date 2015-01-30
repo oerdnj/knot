@@ -126,7 +126,7 @@ static bool zone_empty(const zone_contents_t *zone)
 	       zone->apex->rrset_count == 0;
 }
 
-int init_incremental(zone_update_t *update, zone_t *zone)
+static int init_incremental(zone_update_t *update, zone_t *zone)
 {
 	int ret = changeset_init(&update->change, zone->name);
 	if (ret != KNOT_EOK) {
@@ -134,15 +134,19 @@ int init_incremental(zone_update_t *update, zone_t *zone)
 	}
 	assert(zone->contents);
 	update->new_cont = zone->contents;
+	
+	return KNOT_EOK;
 }
 
 
-int init_full(zone_update_t *update, zone_t *zone)
+static int init_full(zone_update_t *update, zone_t *zone)
 {
 	update->new_cont = zone_contents_new(zone->name);
 	if (update->new_cont == NULL) {
 		return KNOT_ENOMEM;
 	}
+	
+	return KNOT_EOK;
 }
 
 /* ------------------------------- API -------------------------------------- */

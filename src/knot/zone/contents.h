@@ -26,17 +26,8 @@
 
 #pragma once
 
-#include "libknot/internal/lists.h"
-#include "libknot/rrtype/nsec3param.h"
 #include "knot/zone/node.h"
 #include "knot/zone/zone-tree.h"
-
-struct zone;
-
-enum zone_contents_find_dname_result {
-	ZONE_NAME_FOUND = 1,
-	ZONE_NAME_NOT_FOUND = 0
-};
 
 /*----------------------------------------------------------------------------*/
 
@@ -45,160 +36,30 @@ typedef struct zone_contents {
 
 	zone_tree_t *nodes;
 	zone_tree_t *nsec3_nodes;
+	mm_ctx_t mm;
 } zone_contents_t;
-
-/*!
- * \brief Signature of callback for zone contents apply functions.
- */
-typedef int (*zone_contents_apply_cb_t)(zone_node_t *node, void *data);
 
 /*----------------------------------------------------------------------------*/
 
-zone_contents_t *zone_contents_new(const knot_dname_t *apex_name);
 
-int zone_contents_add_rr(zone_contents_t *z, const knot_rrset_t *rr, zone_node_t **n);
-
-/*!
- * \brief Tries to find a node with the specified name in the zone.
- *
- * \note This function is identical to zone_contents_get_node(), only it returns
- *       constant reference.
- *
- * \param zone Zone where the name should be searched for.
- * \param name Name to find.
- *
- * \return Corresponding node if found, NULL otherwise.
- */
-const zone_node_t *zone_contents_find_node(const zone_contents_t *contents,
-                                           const knot_dname_t *name);
-
-/*!
- * \brief Tries to find domain name in the given zone using AVL tree.T
- *
- * \param[in] zone Zone to search for the name.
- * \param[in] name Domain name to search for.
- * \param[out] node The found node (if it was found, otherwise it may contain
- *                  arbitrary node).
- * \param[out] closest_encloser Closest encloser of the given name in the zone.
- * \param[out] previous Previous domain name in canonical order.
- *
- * \retval ZONE_NAME_FOUND if node with owner \a name was found.
- * \retval ZONE_NAME_NOT_FOUND if it was not found.
- * \retval KNOT_EINVAL
- * \retval KNOT_EOUTOFZONE
- */
 int zone_contents_find_dname(const zone_contents_t *contents,
                              const knot_dname_t *name,
                              const zone_node_t **node,
                              const zone_node_t **closest_encloser,
                              const zone_node_t **previous);
 
-/*!
- * \brief Finds previous name in canonical order to the given name in the zone.
- *
- * \param zone Zone to search for the name.
- * \param name Domain name to find the previous domain name of.
- *
- * \return Previous node in canonical order, or NULL if some parameter is wrong.
- */
 const zone_node_t *zone_contents_find_previous(const zone_contents_t *contents,
                                                const knot_dname_t *name);
 
-/*!
- * \brief Tries to find a node with the specified name among the NSEC3 nodes
- *        of the zone.
- *
- * \note This function is identical to zone_contents_get_nsec3_node(), only it
- *       returns constant reference.
- *
- * \param zone Zone where the name should be searched for.
- * \param name Name to find.
- *
- * \return Corresponding node if found, NULL otherwise.
- */
 const zone_node_t *zone_contents_find_nsec3_node(const zone_contents_t *contents,
                                                  const knot_dname_t *name);
 
-/*!
- * \brief Finds NSEC3 node and previous NSEC3 node in canonical order,
- *        corresponding to the given domain name.
- *
- * This functions creates a NSEC3 hash of \a name and tries to find NSEC3 node
- * with the hashed domain name as owner.
- *
- * \param[in] zone Zone to search in.
- * \param[in] name Domain name to get the corresponding NSEC3 nodes for.
- * \param[out] nsec3_node NSEC3 node corresponding to \a name (if found,
- *                        otherwise this may be an arbitrary NSEC3 node).
- * \param[out] nsec3_previous The NSEC3 node immediately preceding hashed domain
- *                            name corresponding to \a name in canonical order.
- *
- * \retval ZONE_NAME_FOUND if the corresponding NSEC3 node was found.
- * \retval ZONE_NAME_NOT_FOUND if it was not found.
- * \retval KNOT_EINVAL
- * \retval KNOT_ENSEC3PAR
- * \retval KNOT_ECRYPTO
- * \retval KNOT_ERROR
- */
 int zone_contents_find_nsec3_for_name(const zone_contents_t *contents,
                                       const knot_dname_t *name,
                                       const zone_node_t **nsec3_node,
                                       const zone_node_t **nsec3_previous);
 
-const zone_node_t *zone_contents_find_wildcard_child(const zone_contents_t *contents,
-                                                     const zone_node_t *parent);
 
-/*!
- * \brief Applies the given function to each regular node in the zone.
- *
- * This function uses in-order depth-first forward traversal, i.e. the function
- * is first recursively applied to left subtree, then to the root and then to
- * the right subtree.
- *
- * \note This implies that the zone is stored in a binary tree. Is there a way
- *       to make this traversal independent on the underlying structure?
- *
- * \param zone Nodes of this zone will be used as parameters for the function.
- * \param function Function to be applied to each node of the zone.
- * \param data Arbitrary data to be passed to the function.
- */
-int zone_contents_tree_apply_inorder(zone_contents_t *zone,
-                                     zone_contents_apply_cb_t function, void *data);
-
-/*!
- * \brief Applies the given function to each NSEC3 node in the zone.
- *
- * This function uses in-order depth-first forward traversal, i.e. the function
- * is first recursively applied to left subtree, then to the root and then to
- * the right subtree.
- *
- * \note This implies that the zone is stored in a binary tree. Is there a way
- *       to make this traversal independent on the underlying structure?
- *
- * \param zone NSEC3 nodes of this zone will be used as parameters for the
- *             function.
- * \param function Function to be applied to each node of the zone.
- * \param data Arbitrary data to be passed to the function.
- */
-int zone_contents_nsec3_apply_inorder(zone_contents_t *zone,
-                                      zone_contents_apply_cb_t function, void *data);
-
-/*!
- * \brief Creates a shallow copy of the zone (no stored data are copied).
- *
- * This function creates a new zone structure in \a to, creates new trees for
- * regular nodes and for NSEC3 nodes, creates new hash table and a new domain
- * table. It also fills these structures with the exact same data as the
- * original zone is - no copying of stored data is done, just pointers are
- * copied.
- *
- * \param from Original zone.
- * \param to Copy of the zone.
- *
- * \retval KNOT_EOK
- * \retval KNOT_EINVAL
- * \retval KNOT_ENOMEM
- */
 int zone_contents_shallow_copy(const zone_contents_t *from, zone_contents_t **to);
 
 void zone_contents_free(zone_contents_t **contents);
@@ -231,8 +92,17 @@ bool zone_contents_is_signed(const zone_contents_t *zone);
  */
 bool zone_contents_is_empty(const zone_contents_t *zone);
 
-zone_node_t *zone_contents_get_node_for_rr(zone_contents_t *zone, const knot_rrset_t *rrset);
+/* --------------------------- NEW API -------------------------------------- */
 
-zone_node_t *zone_contents_find_node_for_rr(zone_contents_t *zone, const knot_rrset_t *rrset);
+zone_contents_t *zone_contents_new(const knot_dname_t *apex_name);
+
+zone_node_t *zone_contents_get_node_for_rr(zone_contents_t *zone, const knot_rrset_t *rrset);
+zone_node_t *zone_contents_find_node_for_rr(const zone_contents_t *zone, const knot_rrset_t *rrset);
+zone_node_t *zone_contents_find_node_for_type(zone_contents_t *zone, const knot_dname_t *owner, const uint16_t type);
+
+int zone_contents_add_rr(zone_contents_t *z, const knot_rrset_t *rr, zone_node_t **n);
+
+const zone_node_t *zone_contents_find_wildcard_child(const zone_contents_t *contents,
+                                                     const zone_node_t *parent);
 
 /*! @} */

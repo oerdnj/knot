@@ -189,21 +189,6 @@ static void scanner_process(zs_scanner_t *scanner)
 	knot_rdataset_clear(&rr.rrs, NULL);
 }
 
-static zone_contents_t *create_zone_from_name(const char *origin)
-{
-	if (origin == NULL) {
-		return NULL;
-	}
-	knot_dname_t *owner = knot_dname_from_str_alloc(origin);
-	if (owner == NULL) {
-		return NULL;
-	}
-	knot_dname_to_lower(owner);
-	zone_contents_t *z = zone_contents_new(owner);
-	knot_dname_free(&owner, NULL);
-	return z;
-}
-
 int zonefile_open(zloader_t *loader, const char *source, const char *origin,
 		  bool semantic_checks)
 {
