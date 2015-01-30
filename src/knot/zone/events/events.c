@@ -340,6 +340,21 @@ void zone_events_freeze(zone_t *zone)
 	evsched_cancel(events->event);
 }
 
+void zone_events_melt(zone_t *zone)
+{
+	if (!zone) {
+		return;
+	}
+
+	zone_events_t *events = &zone->events;
+
+	/* Enable new events being enqueued. */
+	pthread_mutex_lock(&events->mx);
+	events->frozen = false;
+	reschedule(&zone->events);
+	pthread_mutex_unlock(&events->mx);
+}
+
 void zone_events_start(zone_t *zone)
 {
 	if (!zone) {

@@ -115,6 +115,8 @@ static int remote_c_status(server_t *s, remote_cmdargs_t* a);
 static int remote_c_zonestatus(server_t *s, remote_cmdargs_t* a);
 static int remote_c_flush(server_t *s, remote_cmdargs_t* a);
 static int remote_c_signzone(server_t *s, remote_cmdargs_t* a);
+static int remote_c_freeze(server_t *s, remote_cmdargs_t *a);
+static int remote_c_thaw(server_t *s, remote_cmdargs_t *a);
 
 /*! \brief Table of remote commands. */
 struct remote_cmd remote_cmd_tbl[] = {
@@ -126,6 +128,8 @@ struct remote_cmd remote_cmd_tbl[] = {
 	{ "zonestatus",&remote_c_zonestatus },
 	{ "flush",     &remote_c_flush },
 	{ "signzone",  &remote_c_signzone },
+	{ "freeze",    &remote_c_freeze },
+	{ "thaw",      &remote_c_thaw },
 	{ NULL,        NULL }
 };
 
@@ -226,6 +230,32 @@ static int remote_zone_sign(zone_t *zone, remote_cmdargs_t *a)
 
 	zone->flags |= ZONE_FORCE_RESIGN;
 	zone_events_schedule(zone, ZONE_EVENT_DNSSEC, ZONE_EVENT_NOW);
+	return KNOT_EOK;
+}
+
+/*! \brief Zone freeze callback. */
+static int remote_zone_freeze(zone_t *zone, remote_cmdargs_t *a)
+{
+	UNUSED(a);
+	
+	if (zone == NULL) {
+		return KNOT_EINVAL;
+	}
+	
+	zone_events_freeze(zone);
+	return KNOT_EOK;
+}
+
+/*! \brief Thaw zone callback. */
+static int remote_zone_thaw(zone_t *zone, remote_cmdargs_t *a)
+{
+	UNUSED(a);
+	
+	if (zone == NULL) {
+		return KNOT_EINVAL;
+	}
+	
+	zone_events_melt(zone);
 	return KNOT_EOK;
 }
 
@@ -461,17 +491,59 @@ static int remote_c_flush(server_t *s, remote_cmdargs_t* a)
  * \brief Remote command 'signzone' handler.
  *
  */
-static int remote_c_signzone(server_t *server, remote_cmdargs_t* arguments)
+static int remote_c_signzone(server_t *server, remote_cmdargs_t* a)
 {
 	dbg_server("remote: %s\n", __func__);
 
-	if (arguments->argc == 0) {
+	if (a->argc == 0) {
 		/* Resign all. */
 		return KNOT_CTL_ARG_REQ;
 	} else {
 		rcu_read_lock();
 		/* Resign specific zones. */
-		remote_rdata_apply(server, arguments, remote_zone_sign);
+		remote_rdata_apply(server, a, remote_zone_sign);
+		rcu_read_unlock();
+	}
+
+	return KNOT_CTL_ACCEPTED;
+}
+
+/*!
+ * \brief Remote command 'freeze' handler.
+ *
+ */
+static int remote_c_freeze(server_t *server, remote_cmdargs_t* a)
+{
+	dbg_server("remote: %s\n", __func__);
+
+	if (a->argc == 0) {
+		/* Resign all. */
+		return KNOT_CTL_ARG_REQ;
+	} else {
+		rcu_read_lock();
+		/* Resign specific zones. */
+		remote_rdata_apply(server, a, remote_zone_freeze);
+		rcu_read_unlock();
+	}
+
+	return KNOT_CTL_ACCEPTED;
+}
+
+/*!
+ * \brief Remote command 'thaw' handler.
+ *
+ */
+static int remote_c_thaw(server_t *server, remote_cmdargs_t* a)
+{
+	dbg_server("remote: %s\n", __func__);
+
+	if (a->argc == 0) {
+		/* Resign all. */
+		return KNOT_CTL_ARG_REQ;
+	} else {
+		rcu_read_lock();
+		/* Resign specific zones. */
+		remote_rdata_apply(server, a, remote_zone_thaw);
 		rcu_read_unlock();
 	}
 

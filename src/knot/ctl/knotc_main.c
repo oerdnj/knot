@@ -74,6 +74,8 @@ static int cmd_checkconf(int argc, char *argv[], unsigned flags);
 static int cmd_checkzone(int argc, char *argv[], unsigned flags);
 static int cmd_memstats(int argc, char *argv[], unsigned flags);
 static int cmd_signzone(int argc, char *argv[], unsigned flags);
+static int cmd_freeze(int argc, char *argv[], unsigned flags);
+static int cmd_thaw(int argc, char *argv[], unsigned flags);
 
 /*! \brief Table of remote commands. */
 knot_cmd_t knot_cmd_tbl[] = {
@@ -89,6 +91,8 @@ knot_cmd_t knot_cmd_tbl[] = {
 	{&cmd_checkzone,  1, "checkzone",  "[<zone>...]", "Check zones."},
 	{&cmd_memstats,   1, "memstats",   "[<zone>...]", "Estimate memory use for zones."},
 	{&cmd_signzone,   0, "signzone",   "<zone>...",   "Sign zones with available DNSSEC keys."},
+	{&cmd_freeze,     0, "freeze",     "<zone>...",   "Freeze domain to refuse all non-manual updates."},
+	{&cmd_thaw,       0, "thaw",       "<zone>...",   "Unfreeze."},
 	{NULL, 0, NULL, NULL, NULL}
 };
 
@@ -650,6 +654,16 @@ static int cmd_zonestatus(int argc, char *argv[], unsigned flags)
 static int cmd_signzone(int argc, char *argv[], unsigned flags)
 {
 	return cmd_remote("signzone", KNOT_RRTYPE_NS, argc, argv);
+}
+
+static int cmd_freeze(int argc, char *argv[], unsigned flags)
+{
+	return cmd_remote("freeze", KNOT_RRTYPE_NS, argc, argv);
+}
+
+static int cmd_thaw(int argc, char *argv[], unsigned flags)
+{
+	return cmd_remote("thaw", KNOT_RRTYPE_NS, argc, argv);
 }
 
 static int cmd_checkconf(int argc, char *argv[], unsigned flags)

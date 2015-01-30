@@ -143,6 +143,13 @@ void zone_events_cancel(struct zone *zone, zone_event_type_t type);
 void zone_events_freeze(struct zone *zone);
 
 /*!
+ * \brief Unfreeze all zone events and enable new events from running.
+ *
+ * \param zone  Zone to unfreeze events for.
+ */
+void zone_events_melt(struct zone *zone);
+
+/*!
  * \brief Start the events processing.
  *
  * \param zone  Zone to start processing for.
