@@ -67,6 +67,12 @@ Estimate memory consumption for zones.
 .TP
 \fBsignzone\fR \fIzone\fR ...
 Sign zones with available DNSSEC keys.
+.TP
+\fBfreeze\fR \fIzone\fR ...
+Freeze zones to refuse all non-manual updates.
+.TP
+\fBthaw\fR \fIzone\fR ...
+Unfreeze.
 .SH EXAMPLES
 .TP
 .B Setup a keyfile for remote control
