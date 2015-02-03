@@ -67,7 +67,7 @@ typedef struct journal_node
 {
 	uint64_t id;    /*!< Node ID. */
 	uint16_t flags; /*!< Node flags. */
-	uint16_t next;  /*!< Next node ptr. */
+	uint16_t next;  /*!< UNUSED */
 	uint32_t pos;   /*!< Position in journal file. */
 	uint32_t len;   /*!< Entry data length. */
 } journal_node_t;
@@ -103,7 +103,7 @@ typedef struct journal_t
 #define JOURNAL_MAGIC {'k', 'n', 'o', 't', '1', '5', '2'}
 #define MAGIC_LENGTH 7
 /* HEADER = magic, crc, max_entries, qhead, qtail */
-#define JOURNAL_HSIZE (MAGIC_LENGTH + sizeof(crc_t) + sizeof(uint16_t) * 3)
+#define JOURNAL_HSIZE (MAGIC_LENGTH + sizeof(uint32_t) + sizeof(uint16_t) * 3)
 
 /*!
  * \brief Open journal.

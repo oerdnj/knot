@@ -25,9 +25,12 @@
 
 /*----------------------------------------------------------------------------*/
 _public_
-lookup_table_t *lookup_by_name(lookup_table_t *table,
-                                             const char *name)
+lookup_table_t *lookup_by_name(lookup_table_t *table, const char *name)
 {
+	if (table == NULL || name == NULL) {
+		return NULL;
+	}
+
 	while (table->name != NULL) {
 		if (strcasecmp(name, table->name) == 0) {
 			return table;
@@ -40,9 +43,12 @@ lookup_table_t *lookup_by_name(lookup_table_t *table,
 
 /*----------------------------------------------------------------------------*/
 _public_
-lookup_table_t *lookup_by_id(lookup_table_t *table,
-                                           int id)
+lookup_table_t *lookup_by_id(lookup_table_t *table, int id)
 {
+	if (table == NULL) {
+		return NULL;
+	}
+
 	while (table->name != NULL) {
 		if (table->id == id) {
 			return table;
@@ -54,22 +60,6 @@ lookup_table_t *lookup_by_id(lookup_table_t *table,
 }
 
 /*----------------------------------------------------------------------------*/
-
-static int32_t serial_difference(uint32_t s1, uint32_t s2)
-{
-	return (((int64_t)s1 - s2) % ((int64_t)1 << 32));
-}
-
-_public_
-int serial_compare(uint32_t s1, uint32_t s2)
-{
-	int32_t diff = serial_difference(s1, s2);
-	return (s1 == s2) /* s1 equal to s2 */
-	        ? 0
-	        :((diff >= 1 && diff < ((uint32_t)1 << 31))
-	           ? 1	/* s1 larger than s2 */
-	           : -1); /* s1 less than s2 */
-}
 
 _public_
 uint16_t wire_read_u16(const uint8_t *pos)

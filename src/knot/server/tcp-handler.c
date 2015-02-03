@@ -31,6 +31,7 @@
 #include <cap-ng.h>
 #endif /* HAVE_CAP_NG_H */
 
+#include "dnssec/random.h"
 #include "knot/server/tcp-handler.h"
 #include "knot/common/debug.h"
 #include "knot/common/fdset.h"
@@ -40,8 +41,6 @@
 #include "libknot/internal/macros.h"
 #include "libknot/internal/net.h"
 #include "libknot/internal/sockaddr.h"
-#include "libknot/dnssec/crypto.h"
-#include "libknot/dnssec/random.h"
 #include "libknot/processing/overlay.h"
 
 /*! \brief TCP context data. */
@@ -63,7 +62,7 @@ typedef struct tcp_context {
 
 /*! \brief Calculate TCP throttle time (random). */
 static inline int tcp_throttle() {
-	return TCP_THROTTLE_LO + (knot_random_uint16_t() % TCP_THROTTLE_HI);
+	return TCP_THROTTLE_LO + (dnssec_random_uint16_t() % TCP_THROTTLE_HI);
 }
 
 /*! \brief Sweep TCP connection. */
@@ -84,7 +83,7 @@ static enum fdset_sweep_state tcp_sweep(fdset_t *set, int i, void *data)
 
 	/* Translate */
 	char addr_str[SOCKADDR_STRLEN] = {0};
-	sockaddr_tostr(&ss, addr_str, sizeof(addr_str));
+	sockaddr_tostr(addr_str, sizeof(addr_str), &ss);
 
 	log_notice("connection terminated due to inactivity, address '%s'", addr_str);
 	close(fd);
@@ -124,7 +123,7 @@ static int tcp_handle(tcp_context_t *tcp, int fd,
 		if (ret == KNOT_EAGAIN) {
 			rcu_read_lock();
 			char addr_str[SOCKADDR_STRLEN] = {0};
-			sockaddr_tostr(&ss, addr_str, sizeof(addr_str));
+			sockaddr_tostr(addr_str, sizeof(addr_str), &ss);
 			log_warning("connection timed out, address '%s', "
 			            "timeout %d seconds",
 			            addr_str, conf()->max_conn_idle);
@@ -384,10 +383,4 @@ finish:
 	ref_release(ref);
 
 	return ret;
-}
-
-int tcp_master_destruct(dthread_t *thread)
-{
-	knot_crypto_cleanup_thread();
-	return KNOT_EOK;
 }

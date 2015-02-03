@@ -36,10 +36,12 @@ rrl
 rrset
 rrset_wire
 server
+utils
 wire
 worker_pool
 worker_queue
 zone_events
+zone_serial
 zone_timers
 zone_update
 zonedb

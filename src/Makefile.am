@@ -1,8 +1,8 @@
 ACLOCAL_AMFLAGS = -I $(top_srcdir)/m4
-SUBDIRS = zscanner dnstap .
+SUBDIRS = dnstap .
 
 sbin_PROGRAMS = knotc knotd
-bin_PROGRAMS = kdig khost knsupdate knsec3hash
+bin_PROGRAMS = kdig khost knsupdate
 lib_LTLIBRARIES = libknot-int.la libknot.la
 noinst_LTLIBRARIES = libknotd.la libknotus.la
 
@@ -11,7 +11,9 @@ AM_CPPFLAGS = \
 	-include $(top_builddir)/src/config.h	\
 	-DCONFIG_DIR='"${config_dir}"'		\
 	-DSTORAGE_DIR='"${storage_dir}"'	\
-	-DRUN_DIR='"${run_dir}"'
+	-DRUN_DIR='"${run_dir}"'		\
+	-I$(top_srcdir)/dnssec/lib
+
 AM_CFLAGS = $(CODE_COVERAGE_CFLAGS)
 AM_LDFLAGS = $(CODE_COVERAGE_LDFLAGS)
 AM_YFLAGS = -d
@@ -56,9 +58,6 @@ knsupdate_SOURCES =				\
 	utils/knsupdate/knsupdate_main.c	\
 	utils/knsupdate/knsupdate_params.c	\
 	utils/knsupdate/knsupdate_params.h
-
-knsec3hash_SOURCES =				\
-	utils/knsec3hash/knsec3hash_main.c
 
 # static: utilities shared
 libknotus_la_SOURCES =				\
@@ -138,15 +137,8 @@ nobase_libknot_la_HEADERS =			\
 	libknot/consts.h			\
 	libknot/descriptor.h			\
 	libknot/dname.h				\
-	libknot/dnssec/bitmap.h			\
-	libknot/dnssec/config.h			\
-	libknot/dnssec/crypto.h			\
 	libknot/dnssec/key.h			\
-	libknot/dnssec/policy.h			\
-	libknot/dnssec/random.h			\
-	libknot/dnssec/rrset-sign.h		\
-	libknot/dnssec/sig0.h			\
-	libknot/dnssec/sign.h			\
+	libknot/errcode.c			\
 	libknot/errcode.h			\
 	libknot/libknot.h			\
 	libknot/packet/compr.h			\
@@ -179,12 +171,7 @@ libknot_la_SOURCES =				\
 	libknot/consts.c			\
 	libknot/descriptor.c			\
 	libknot/dname.c				\
-	libknot/dnssec/crypto.c			\
 	libknot/dnssec/key.c			\
-	libknot/dnssec/policy.c			\
-	libknot/dnssec/rrset-sign.c		\
-	libknot/dnssec/sig0.c			\
-	libknot/dnssec/sign.c			\
 	libknot/errcode.c			\
 	libknot/packet/compr.c			\
 	libknot/packet/pkt.c			\
@@ -218,10 +205,16 @@ libknotd_la_SOURCES =				\
 	knot/ctl/process.h			\
 	knot/ctl/remote.c			\
 	knot/ctl/remote.h			\
+	knot/dnssec/context.c			\
+	knot/dnssec/context.h			\
 	knot/dnssec/nsec-chain.c		\
 	knot/dnssec/nsec-chain.h		\
 	knot/dnssec/nsec3-chain.c		\
 	knot/dnssec/nsec3-chain.h		\
+	knot/dnssec/policy.c			\
+	knot/dnssec/policy.h			\
+	knot/dnssec/rrset-sign.c		\
+	knot/dnssec/rrset-sign.h		\
 	knot/dnssec/zone-events.c		\
 	knot/dnssec/zone-events.h		\
 	knot/dnssec/zone-keys.c			\
@@ -232,6 +225,8 @@ libknotd_la_SOURCES =				\
 	knot/dnssec/zone-sign.h			\
 	knot/modules/synth_record.c		\
 	knot/modules/synth_record.h		\
+	knot/modules/dnsproxy.c			\
+	knot/modules/dnsproxy.h			\
 	knot/nameserver/axfr.c			\
 	knot/nameserver/axfr.h			\
 	knot/nameserver/capture.c		\
@@ -313,6 +308,8 @@ libknotd_la_SOURCES =				\
 	knot/zone/node.h			\
 	knot/zone/semantic-check.c		\
 	knot/zone/semantic-check.h		\
+	knot/zone/serial.c			\
+	knot/zone/serial.h			\
 	knot/zone/timers.c			\
 	knot/zone/timers.h			\
 	knot/zone/zone-diff.c			\
@@ -335,8 +332,9 @@ libknot_int_la_CPPFLAGS = $(AM_CPPFLAGS) $(lmdb_CFLAGS)
 libknot_int_la_CFLAGS = $(AM_CFLAGS) -fvisibility=default
 libknot_int_la_LDFLAGS = $(AM_LDFLAGS) $(RELEASE_INFO) $(VERSION_INFO) $(lmdb_LIBS)
 
+libknot_la_CPPFLAGS = $(AM_CPPFLAGS)
 libknot_la_LDFLAGS = $(AM_LDFLAGS) $(RELEASE_INFO) $(VERSION_INFO)
-libknot_la_LIBADD  = libknot-int.la zscanner/libzscanner.la
+libknot_la_LIBADD  = libknot-int.la ../dnssec/libdnssec.la zscanner/libzscanner.la
 
 libknotd_la_CPPFLAGS  = $(AM_CPPFLAGS) $(systemd_CFLAGS)
 libknotd_la_LDFLAGS = $(AM_LDFLAGS) $(systemd_LIBS)
@@ -359,7 +357,6 @@ BIN_LIBS = libknotus.la
 kdig_LDADD       = $(BIN_LIBS) $(libidn_LIBS)
 khost_LDADD      = $(BIN_LIBS) $(libidn_LIBS)
 knsupdate_LDADD  = $(BIN_LIBS) zscanner/libzscanner.la
-knsec3hash_LDADD = $(BIN_LIBS)
 
 if HAVE_DNSTAP
 libknotd_la_SOURCES +=				\
@@ -369,6 +366,19 @@ libknotd_la_SOURCES +=				\
 kdig_LDADD         += dnstap/libdnstap.la
 khost_LDADD        += dnstap/libdnstap.la
 libknotd_la_LIBADD += dnstap/libdnstap.la
+endif
+
+# rose sources and client tool
+if HAVE_ROSEDB
+libknotd_la_SOURCES +=				\
+	knot/modules/rosedb.c				\
+	knot/modules/rosedb.h
+
+rosedb_tool_SOURCES =					\
+	knot/modules/rosedb_tool.c
+
+bin_PROGRAMS += rosedb_tool
+rosedb_tool_LDADD = libknot.la libknotd.la
 endif
 
 # pkg-config

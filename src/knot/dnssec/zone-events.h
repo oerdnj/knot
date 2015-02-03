@@ -1,4 +1,4 @@
-/*  Copyright (C) 2013 CZ.NIC, z.s.p.o. <knot-dns@labs.nic.cz>
+\/*  Copyright (C) 2013 CZ.NIC, z.s.p.o. <knot-dns@labs.nic.cz>
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -25,41 +25,20 @@
  * \addtogroup dnssec
  * @{
  */
+
 #pragma once
 
 #include "knot/zone/zone.h"
-#include "knot/updates/zone-update.h"
-#include "knot/dnssec/zone-keys.h"
-#include "libknot/dnssec/policy.h"
+#include "knot/updates/changesets.h"
 
-/*!
- * \brief init_dnssec_structs
- * \param zone
- * \param config
- * \param zone_keys
- * \param policy
- * \param soa_up
- * \param force
- * \return 
- */
-int init_dnssec_structs(const zone_contents_t *zone,
-                        const conf_zone_t *config,
-                        knot_zone_keys_t *zone_keys,
-                        knot_dnssec_policy_t *policy,
-                        knot_update_serial_t soa_up, bool force);
+enum zone_sign_flags {
+	ZONE_SIGN_NONE = 0,
+	ZONE_SIGN_DROP_SIGNATURES = (1 << 0),
+	ZONE_SIGN_KEEP_SOA_SERIAL = (1 << 1),
+};
 
-/*!
- * \brief DNSSEC resign zone, store new records into changeset. Valid signatures
- *        and NSEC(3) records will not be changed.
- *
- * \param zone         Zone contents to be signed.
- * \param zone_config  Zone/DNSSEC configuration.
- * \param out_ch       New records will be added to this changeset.
- * \param soa_up       SOA serial update policy.
- * \param refresh_at   Signature refresh time of the oldest signature in zone.
- *
- * \return Error code, KNOT_EOK if successful.
- */
+typedef enum zone_sign_flags zone_sign_flags_t;
+
 int dnssec_zone_sign(zone_update_t *up, uint32_t *refresh_at);
 
 /*! @} */

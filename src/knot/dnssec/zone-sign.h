@@ -30,25 +30,40 @@
 
 #include "knot/updates/zone-update.h"
 #include "knot/zone/contents.h"
+#include "knot/dnssec/context.h"
 #include "knot/dnssec/zone-keys.h"
-#include "libknot/dnssec/policy.h"
 
 /*!
  * \brief Update zone signatures and store performed changes in changeset.
  *
  * Updates RRSIGs, NSEC(3)s, and DNSKEYs.
  *
- * \param up          Zone update structure
+ * \param zone        Zone to be signed.
  * \param zone_keys   Zone keys.
- * \param policy      DNSSEC policy.
- * \param refresh_at  Pointer to refresh time when the zone should be resigned.
+ * \param dnssec_ctx  DNSSEC context.
+ * \param changeset   Changeset to be updated.
+ * \param expire_at   Time, when the oldest signature in the zone expires.
  *
  * \return Error code, KNOT_EOK if successful.
  */
-int knot_zone_sign(zone_update_t *up,
-                   const knot_zone_keys_t *zone_keys,
-                   const knot_dnssec_policy_t *policy,
-                   uint32_t *refresh_at);
+int knot_zone_sign(zone_update_t *update,
+                   const zone_keyset_t *zone_keys,
+                   const kdnssec_ctx_t *dnssec_ctx,
+                   uint32_t *expire_at);
+
+/*!
+ * \brief Check if zone SOA signatures are expired.
+ *
+ * \param zone       Zone to be signed.
+ * \param zone_keys  Zone keys.
+ * \param policy     DNSSEC policy.
+ * \param changeset  Changeset to be updated.
+ *
+ * \return True if zone SOA signatures need update, false othewise.
+ */
+bool knot_zone_sign_soa_expired(const zone_read_t *zr,
+                                const zone_keyset_t *zone_keys,
+                                const kdnssec_ctx_t *dnssec_ctx);
 
 /*!
  * \brief Sign changeset created by DDNS or zone-diff.
@@ -61,8 +76,9 @@ int knot_zone_sign(zone_update_t *up,
  *
  * \return Error code, KNOT_EOK if successful.
  */
-int knot_zone_sign_changeset(zone_update_t *up,
-                             uint32_t *refresh_at);
+int knot_zone_sign_changeset(zone_update_t *update,
+                             const zone_keyset_t *zone_keys,
+                             const kdnssec_ctx_t *dnssec_ctx);
 
 /*!
  * \brief Checks whether RRSet in a node has to be signed. Will not return
@@ -71,6 +87,7 @@ int knot_zone_sign_changeset(zone_update_t *up,
  *
  * \param node         Node containing the RRSet.
  * \param rrset        RRSet we are checking for.
+ * \param table        Optional hat trie with already signed RRs.
  * \param should_sign  Set to true if RR should be signed, false otherwise.
  *
  * \return KNOT_E*

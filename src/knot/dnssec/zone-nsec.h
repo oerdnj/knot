@@ -29,11 +29,11 @@
 #pragma once
 
 #include <stdbool.h>
-#include "knot/updates/zone-update.h"
+#include "knot/updates/changesets.h"
 #include "knot/zone/contents.h"
-#include "libknot/dnssec/policy.h"
+#include "knot/dnssec/context.h"
 #include "knot/dnssec/zone-keys.h"
-#include "libknot/dnssec/bitmap.h"
+#include "dnssec/nsec.h"
 
 /*!
  * Check if NSEC3 is enabled for the given zone.
@@ -80,7 +80,7 @@ knot_dname_t *knot_create_nsec3_owner(const knot_dname_t *owner,
  * \return Error code, KNOT_EOK if successful.
  */
 int knot_zone_create_nsec_chain(zone_update_t *up,
-                                const knot_zone_keys_t *zone_keys,
-                                const knot_dnssec_policy_t *policy);
+                                const zone_keyset_t *zone_keys,
+                                const kdnssec_ctx_t *dnssec_ctx);
 
 /*! @} */

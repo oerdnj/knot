@@ -21,6 +21,7 @@
 #include <errno.h>
 #include <assert.h>
 
+#include "dnssec/random.h"
 #include "knot/common/debug.h"
 #include "knot/common/trim.h"
 #include "knot/server/server.h"
@@ -30,9 +31,6 @@
 #include "knot/worker/pool.h"
 #include "knot/zone/timers.h"
 #include "knot/zone/zonedb-load.h"
-#include "libknot/libknot.h"
-#include "libknot/dnssec/crypto.h"
-#include "libknot/dnssec/random.h"
 
 /*! \brief Event scheduler loop. */
 static int evsched_run(dthread_t *thread)
@@ -63,13 +61,6 @@ static int evsched_run(dthread_t *thread)
 		}
 	}
 
-	return KNOT_EOK;
-}
-
-/*! \brief Event scheduler thread destructor. */
-static int evsched_destruct(dthread_t *thread)
-{
-	knot_crypto_cleanup_thread();
 	return KNOT_EOK;
 }
 
@@ -110,7 +101,7 @@ static int server_init_iface(iface_t *new_if, conf_iface_t *cfg_if)
 
 	/* Convert to string address format. */
 	char addr_str[SOCKADDR_STRLEN] = {0};
-	sockaddr_tostr(&cfg_if->addr, addr_str, sizeof(addr_str));
+	sockaddr_tostr(addr_str, sizeof(addr_str), &cfg_if->addr);
 
 	/* Create bound UDP socket. */
 	int sock = net_bound_socket(SOCK_DGRAM, &cfg_if->addr);
@@ -162,7 +153,7 @@ static void remove_ifacelist(struct ref *p)
 	char addr_str[SOCKADDR_STRLEN] = {0};
 	iface_t *n = NULL, *m = NULL;
 	WALK_LIST_DELSAFE(n, m, ifaces->u) {
-		sockaddr_tostr(&n->addr, addr_str, sizeof(addr_str));
+		sockaddr_tostr(addr_str, sizeof(addr_str), &n->addr);
 		log_info("removing interface '%s'", addr_str);
 		server_remove_iface(n);
 	}
@@ -219,7 +210,7 @@ static int reconfigure_sockets(const struct conf *conf, server_t *s)
 		if (found_match) {
 			rem_node((node_t *)m);
 		} else {
-			sockaddr_tostr(&cfg_if->addr, addr_str, sizeof(addr_str));
+			sockaddr_tostr(addr_str, sizeof(addr_str), &cfg_if->addr);
 			log_info("binding to interface '%s'", addr_str);
 
 			/* Create new interface. */
@@ -286,7 +277,7 @@ int server_init(server_t *server, int bg_workers)
 	if (evsched_init(&server->sched, server) != KNOT_EOK) {
 		return KNOT_ENOMEM;
 	}
-	server->iosched = dt_create(1, evsched_run, evsched_destruct, &server->sched);
+	server->iosched = dt_create(1, evsched_run, NULL, &server->sched);
 	if (server->iosched == NULL) {
 		evsched_deinit(&server->sched);
 		return KNOT_ENOMEM;
@@ -490,7 +481,7 @@ static int reconfigure_threads(const struct conf *conf, server_t *server)
 
 		/* Initialize I/O handlers. */
 		ret = server_init_handler(server, IO_UDP, conf_udp_threads(conf),
-		                          &udp_master, &udp_master_destruct);
+		                          &udp_master, NULL);
 		if (ret != KNOT_EOK) {
 			log_error("failed to create UDP threads (%s)",
 			          knot_strerror(ret));
@@ -500,7 +491,7 @@ static int reconfigure_threads(const struct conf *conf, server_t *server)
 		/* Create at least CONFIG_XFERS threads for TCP for faster
 		 * processing of massive bootstrap queries. */
 		ret = server_init_handler(server, IO_TCP, conf_tcp_threads(conf),
-		                          &tcp_master, &tcp_master_destruct);
+		                          &tcp_master, NULL);
 		if (ret != KNOT_EOK) {
 			log_error("failed to create TCP threads (%s)",
 			          knot_strerror(ret));

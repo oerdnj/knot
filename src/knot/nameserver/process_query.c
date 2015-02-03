@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <urcu.h>
 
+#include "dnssec/tsig.h"
 #include "knot/nameserver/process_query.h"
 #include "knot/nameserver/chaos.h"
 #include "knot/nameserver/internet.h"
@@ -435,7 +436,7 @@ static int process_query_out(knot_layer_t *ctx, knot_pkt_t *pkt)
 
 	/* Check parse state. */
 	knot_pkt_t *query = qdata->query;
-	int next_state = KNOT_NS_PROC_DONE;
+	int next_state = KNOT_NS_PROC_FULL;
 	if (query->parsed < query->size) {
 		dbg_ns("%s: incompletely parsed query, FORMERR\n", __func__);
 		knot_pkt_clear(pkt);
@@ -462,18 +463,20 @@ static int process_query_out(knot_layer_t *ctx, knot_pkt_t *pkt)
 	}
 
 	/* Answer based on qclass. */
-	switch (knot_pkt_qclass(pkt)) {
-	case KNOT_CLASS_CH:
-		next_state = query_chaos(pkt, ctx);
-		break;
-	case KNOT_CLASS_ANY:
-	case KNOT_CLASS_IN:
-		next_state = query_internet(pkt, ctx);
-		break;
-	default:
-		qdata->rcode = KNOT_RCODE_REFUSED;
-		next_state = KNOT_NS_PROC_FAIL;
-		break;
+	if (next_state != KNOT_NS_PROC_DONE) {
+		switch (knot_pkt_qclass(pkt)) {
+		case KNOT_CLASS_CH:
+			next_state = query_chaos(pkt, ctx);
+			break;
+		case KNOT_CLASS_ANY:
+		case KNOT_CLASS_IN:
+			next_state = query_internet(pkt, ctx);
+			break;
+		default:
+			qdata->rcode = KNOT_RCODE_REFUSED;
+			next_state = KNOT_NS_PROC_FAIL;
+			break;
+		}
 	}
 
 	/*
@@ -538,7 +541,7 @@ bool process_query_acl_check(list_t *acl, struct query_data *qdata)
 	knot_pkt_t *query = qdata->query;
 	const struct sockaddr_storage *query_source = qdata->param->remote;
 	const knot_dname_t *key_name = NULL;
-	knot_tsig_algorithm_t key_alg = KNOT_TSIG_ALG_NULL;
+	dnssec_tsig_algorithm_t key_alg = DNSSEC_TSIG_UNKNOWN;
 
 	/* Skip if already checked and valid. */
 	if (qdata->sign.tsig_key != NULL) {
@@ -633,7 +636,7 @@ int process_query_sign_response(knot_pkt_t *pkt, struct query_data *qdata)
 
 		/* Sign query response. */
 		dbg_ns("%s: signing response using key %p\n", __func__, ctx->tsig_key);
-		size_t new_digest_len = knot_tsig_digest_length(ctx->tsig_key->algorithm);
+		size_t new_digest_len = dnssec_tsig_algorithm_size(ctx->tsig_key->algorithm);
 		if (ctx->pkt_count == 0) {
 			ret = knot_tsig_sign(pkt->wire, &pkt->size, pkt->max_size,
 			                     ctx->tsig_digest, ctx->tsig_digestlen,

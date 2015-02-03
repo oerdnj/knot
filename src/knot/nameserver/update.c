@@ -1,4 +1,4 @@
-/*  Copyright (C) 2013 CZ.NIC, z.s.p.o. <knot-dns@labs.nic.cz>
+/*  Copyright (C) 2014 CZ.NIC, z.s.p.o. <knot-dns@labs.nic.cz>
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -12,8 +12,9 @@
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+*/
 
+#include "dnssec/random.h"
 #include "knot/nameserver/update.h"
 #include "knot/nameserver/internet.h"
 #include "knot/nameserver/process_query.h"
@@ -31,7 +32,6 @@
 #include "knot/server/tcp-handler.h"
 #include "knot/server/udp-handler.h"
 #include "knot/nameserver/capture.h"
-#include "libknot/dnssec/random.h"
 #include "libknot/processing/requestor.h"
 
 /* UPDATE-specific logging (internal, expects 'qdata' variable set). */
@@ -50,86 +50,25 @@ static void init_qdata_from_request(struct query_data *qdata,
 	qdata->sign = req->sign;
 }
 
-static int sign_changeset(zone_update_t *up)
+static bool apex_rr_changed(const zone_contents_t *old_contents,
+                            const zone_contents_t *new_contents,
+                            uint16_t type)
 {
-#warning figure this out
-//	const zone_contents_t *cont = up->zone->contents;
-//	const knot_dname_t *zone_name = up->zone->contents->apex->owner;
+	knot_rrset_t old_rr = node_rrset(old_contents->apex, type);
+	knot_rrset_t new_rr = node_rrset(new_contents->apex, type);
 
-//	// Keep the original serial
-//	knot_update_serial_t soa_up = KNOT_SOA_SERIAL_KEEP;
-//#warning use API for this
-//	uint32_t new_serial = zone_contents_serial(cont);
-
-//	// Init needed structures
-//	knot_zone_keys_t zone_keys;
-//	knot_init_zone_keys(&zone_keys);
-//	knot_dnssec_policy_t policy = { '\0' };
-//	int ret = init_dnssec_structs(cont, up->zone->conf, &zone_keys, &policy,
-//	                              soa_up, false);
-//	if (ret != KNOT_EOK) {
-//		return ret;
-//	}
-
-//	// Sign added and removed RRSets in changeset
-//	ret = knot_zone_sign_changeset(zone, in_ch, out_ch,
-//	                               &zone_keys, &policy);
-//	if (ret != KNOT_EOK) {
-//		log_zone_error(zone_name, "DNSSEC, failed to sign changeset (%s)",
-//		               knot_strerror(ret));
-//		knot_free_zone_keys(&zone_keys);
-//		return ret;
-//	}
-
-//	// Create NSEC(3) chain
-//	ret = knot_zone_create_nsec_chain(zone, out_ch, &zone_keys, &policy);
-//	if (ret != KNOT_EOK) {
-//		log_zone_error(zone_name, "DNSSEC, failed to create NSEC(3) chain (%s)",
-//		               knot_strerror(ret));
-//		knot_free_zone_keys(&zone_keys);
-//		return ret;
-//	}
-
-//	// Sign added NSEC(3)
-//	ret = knot_zone_sign_nsecs_in_changeset(&zone_keys, &policy,
-//	                                        out_ch);
-//	if (ret != KNOT_EOK) {
-//		log_zone_error(zone_name, "DNSSEC, failed to sign changeset (%s)",
-//		               knot_strerror(ret));
-//		knot_free_zone_keys(&zone_keys);
-//		return ret;
-//	}
-
-//	// Update SOA RRSIGs
-//	knot_rrset_t soa = node_rrset(zone->apex, KNOT_RRTYPE_SOA);
-//	knot_rrset_t rrsigs = node_rrset(zone->apex, KNOT_RRTYPE_RRSIG);
-//	ret = knot_zone_sign_update_soa(&soa, &rrsigs, &zone_keys, &policy,
-//	                                new_serial, out_ch);
-//	if (ret != KNOT_EOK) {
-//		log_zone_error(zone_name, "DNSSEC, failed to sign SOA record (%s)",
-//		               knot_strerror(ret));
-//		knot_free_zone_keys(&zone_keys);
-//		return ret;
-//	}
-
-//	knot_free_zone_keys(&zone_keys);
-
-//	*refresh_at = policy.refresh_before; // only new signatures are made
-
-//	return KNOT_EOK;
+	return !knot_rrset_equal(&old_rr, &new_rr, KNOT_RRSET_COMPARE_WHOLE);
 }
 
-static bool apex_rr_changed(zone_update_t *up, uint16_t type)
+static int sign_update(zone_t *zone, const zone_contents_t *old_contents,
+                       zone_contents_t *new_contents, changeset_t *ddns_ch,
+                       changeset_t *sec_ch)
 {
-#warning get nodes and compare
-//	knot_rrset_t old_rr = node_rrset(old_contents->apex, type);
-//	knot_rrset_t new_rr = node_rrset(new_contents->apex, type);
+	assert(zone != NULL);
+	assert(old_contents != NULL);
+	assert(new_contents != NULL);
+	assert(ddns_ch != NULL);
 
-//	return !knot_rrset_equal(&old_rr, &new_rr, KNOT_RRSET_COMPARE_WHOLE);
-}
-
-static int sign_update(zone_update_t *up)
-{
 	/*
 	 * Check if the UPDATE changed DNSKEYs or NSEC3PARAM.
 	 * If so, we have to sign the whole zone.
@@ -173,7 +112,7 @@ static int check_prereqs(struct knot_request *request,
 		assert(rcode != KNOT_RCODE_NOERROR);
 		knot_wire_set_rcode(request->resp->wire, rcode);
 		return ret;
-	};
+	}
 
 	return KNOT_EOK;
 }
@@ -384,7 +323,7 @@ static int forward_request(zone_t *zone, struct knot_request *request)
 		knot_wire_set_rcode(request->resp->wire, KNOT_RCODE_SERVFAIL);
 		return ret;
 	}
-	knot_wire_set_id(query->wire, knot_random_uint16_t());
+	knot_wire_set_id(query->wire, dnssec_random_uint16_t());
 	knot_tsig_append(query->wire, &query->size, query->max_size, query->tsig_rr);
 
 	/* Create a request. */

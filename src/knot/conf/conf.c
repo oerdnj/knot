@@ -226,7 +226,7 @@ static int conf_process(conf_t *conf)
 		if (ctl_if->addr.ss_family == AF_UNIX) {
 			char *full_path = malloc(SOCKADDR_STRLEN);
 			memset(full_path, 0, SOCKADDR_STRLEN);
-			sockaddr_tostr(&ctl_if->addr, full_path, SOCKADDR_STRLEN);
+			sockaddr_tostr(full_path, SOCKADDR_STRLEN, &ctl_if->addr);
 
 			/* Convert to absolute path. */
 			full_path = conf_abs_path(conf->rundir, full_path);
@@ -584,7 +584,7 @@ conf_t *conf_new(char* path)
 	c->notify_timeout = CONFIG_NOTIFY_TIMEOUT;
 	c->dbsync_timeout = CONFIG_DBSYNC_TIMEOUT;
 	c->max_udp_payload = KNOT_EDNS_MAX_UDP_PAYLOAD;
-	c->sig_lifetime = KNOT_DNSSEC_DEFAULT_LIFETIME;
+	c->sig_lifetime = 0;
 	c->serial_policy = CONFIG_SERIAL_DEFAULT;
 	c->uid = -1;
 	c->gid = -1;

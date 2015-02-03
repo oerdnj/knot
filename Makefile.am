@@ -1,5 +1,5 @@
 ACLOCAL_AMFLAGS = -I m4
-SUBDIRS = libtap src tests samples doc man patches
+SUBDIRS = libtap src/zscanner dnssec src tests samples doc man patches
 
 AM_DISTCHECK_CONFIGURE_FLAGS = \
 	--disable-code-coverage
@@ -10,6 +10,7 @@ CODE_COVERAGE_DIRS = \
 	src/knot \
 	src/libknot \
 	src/zscanner
+	dnssec/lib dnssec/shared
 
 code_coverage_quiet = --quiet
 

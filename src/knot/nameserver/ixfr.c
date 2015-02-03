@@ -21,6 +21,7 @@
 #include "knot/nameserver/process_answer.h"
 #include "knot/updates/apply.h"
 #include "knot/common/debug.h"
+#include "knot/zone/serial.h"
 #include "libknot/descriptor.h"
 #include "libknot/internal/utils.h"
 #include "libknot/rrtype/soa.h"
@@ -40,9 +41,9 @@ enum ixfr_states {
 /*! \brief Extended structure for IXFR-in/IXFR-out processing. */
 struct ixfr_proc {
 	struct xfr_proc proc;          /* Generic transfer processing context. */
-	int state;                     /* IXFR-in state. */
 	changeset_iter_t cur;          /* Current changeset iteration state.*/
 	knot_rrset_t cur_rr;           /* Currently processed RRSet. */
+	int state;                     /* IXFR-in state. */
 	knot_rrset_t *final_soa;       /* First SOA received via IXFR. */
 	zone_update_t up;              /* IXFR-in changes are stored here. */
 	changeset_t ch;                /* IXFR-out changeset. */
@@ -177,7 +178,15 @@ static int ixfr_load_changes(changeset_t *ch, const zone_t *zone,
 		return KNOT_EUPTODATE;
 	}
 
-	return journal_load_changesets(zone, ch, serial_from, serial_to);
+	pthread_mutex_lock(&zone->journal_lock);
+	ret = journal_load_changesets(zone, chgsets, serial_from, serial_to);
+	pthread_mutex_unlock(&zone->journal_lock);
+
+	if (ret != KNOT_EOK) {
+		changesets_free(chgsets);
+	}
+
+	return ret;
 }
 
 /*! \brief Check IXFR query validity. */
@@ -311,18 +320,12 @@ static int ixfr_answer_soa(knot_pkt_t *pkt, struct query_data *qdata)
 #define IXFRIN_LOG(severity, msg...) \
 	ANSWER_LOG(severity, adata, "IXFR, incoming", msg)
 
-/*! \brief Checks whether IXFR response contains enough data for processing. */
-static bool ixfr_enough_data(const knot_pkt_t *pkt)
-{
-	const knot_pktsection_t *answer = knot_pkt_section(pkt, KNOT_ANSWER);
-	return answer->count >= 2;
-}
-
 /*! \brief Checks whether server responded with AXFR-style IXFR. */
 static bool ixfr_is_axfr(const knot_pkt_t *pkt)
 {
 	const knot_pktsection_t *answer = knot_pkt_section(pkt, KNOT_ANSWER);
-	return answer->rr[0].type == KNOT_RRTYPE_SOA &&
+	return answer->count >= 2 &&
+	       answer->rr[0].type == KNOT_RRTYPE_SOA &&
 	       answer->rr[1].type != KNOT_RRTYPE_SOA;
 }
 
@@ -503,11 +506,11 @@ static int ixfrin_step(const knot_rrset_t *rr, struct ixfr_proc *proc)
 	case IXFR_SOA_DEL:
 		return solve_soa_del(rr, proc);
 	case IXFR_DEL:
-		return solve_del(rr, &proc->ch, proc->mm);
+		return solve_del(rr, change, proc->mm);
 	case IXFR_SOA_ADD:
-		return solve_soa_add(rr, &proc->ch, proc->mm);
+		return solve_soa_add(rr, change, proc->mm);
 	case IXFR_ADD:
-		return solve_add(rr, &proc->ch, proc->mm);
+		return solve_add(rr, change, proc->mm);
 	case IXFR_DONE:
 		return KNOT_EOK;
 	default:
@@ -595,8 +598,8 @@ int ixfr_query(knot_pkt_t *pkt, struct query_data *qdata)
 		case KNOT_EOK:      /* OK */
 			ixfr = (struct ixfr_proc*)qdata->ext;
 			IXFROUT_LOG(LOG_INFO, "started, serial %u -> %u",
-			            knot_soa_serial(&ixfr->ch.soa_from->rrs),
-			            knot_soa_serial(&ixfr->ch.soa_to->rrs));
+			            knot_soa_serial(&ixfr->soa_from->rrs),
+			            knot_soa_serial(&ixfr->soa_to->rrs));
 			break;
 		case KNOT_EUPTODATE: /* Our zone is same age/older, send SOA. */
 			IXFROUT_LOG(LOG_INFO, "zone is up-to-date");
@@ -637,6 +640,17 @@ int ixfr_query(knot_pkt_t *pkt, struct query_data *qdata)
 	return ret;
 }
 
+static int check_format(knot_pkt_t *pkt)
+{
+	const knot_pktsection_t *answer = knot_pkt_section(pkt, KNOT_ANSWER);
+
+	if (answer->count >= 1 && answer->rr[0].type == KNOT_RRTYPE_SOA) {
+		return KNOT_EOK;
+	} else {
+		return KNOT_EMALF;
+	}
+}
+
 int ixfr_process_answer(knot_pkt_t *pkt, struct answer_data *adata)
 {
 	if (pkt == NULL || adata == NULL) {
@@ -644,7 +658,8 @@ int ixfr_process_answer(knot_pkt_t *pkt, struct answer_data *adata)
 	}
 	
 	if (adata->ext == NULL) {
-		if (!ixfr_enough_data(pkt)) {
+		if (check_format(pkt) != KNOT_EOK) {
+			IXFRIN_LOG(LOG_WARNING, "malformed response");
 			return KNOT_NS_PROC_FAIL;
 		}
 	
