@@ -35,11 +35,34 @@ typedef struct {
 	zone_lock_t lock;
 } zone_read_t;
 
+typedef struct {
+#warning redo
+	changeset_t ch;
+	changeset_iter_t it;
+	knot_rrset_t rr;
+} zone_rr_iter_t;
+
+typedef struct {
+	namedb_txn_t txn;
+	namedb_iter_t *it;
+} zone_node_iter_t;
+
 int zone_read_begin(zone_read_t *r, const knot_zonedb_t *db, const knot_dname_t *qname);
 int zone_read_begin_suffix(zone_read_t *r, knot_zonedb_t *db, const knot_dname_t *qname);
 void zone_read_done(zone_read_t *r);
 
 const zone_node_t *zone_read_node_for_type(zone_read_t *zr, const knot_dname_t *owner, const uint16_t type);
-const zone_node_t *zone_read_get_apex(zone_read_t *zr);
+const zone_node_t *zone_read_apex(zone_read_t *zr);
+const zone_node_t *zone_read_previous_for_type(zone_read_t *zr, const knot_dname_t *owner, const uint16_t type);
+const zone_node_t *zone_read_closest_encloser(zone_read_t *zr, const knot_dname_t *owner);
+
+int zone_read_rr_iter(zone_rr_iter_t *it, const zone_read_t *zr, const bool sorted);
+int zone_read_node_iter(zone_node_iter_t *it, const zone_read_t *zr, const bool sorted, const bool nsec3);
+
+const zone_node_t *zone_read_iter_next_node(zone_node_iter_t *it);
+const knot_rrset_t *zone_read_iter_next_rr(zone_rr_iter_t *it);
+
+void zone_read_node_iter_clear(zone_node_iter_t *it);
+void zone_read_rr_iter_clear(zone_rr_iter_t *it);
 
 /*! @} */
