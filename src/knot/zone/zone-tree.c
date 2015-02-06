@@ -15,211 +15,131 @@
  */
 
 #include <assert.h>
-#include <stdlib.h>
-#include <stdio.h>
 
 #include "knot/zone/zone-tree.h"
-#include "knot/zone/node.h"
-#include "knot/common/debug.h"
-#include "libknot/internal/trie/hat-trie.h"
 #include "libknot/internal/macros.h"
+#include "libknot/internal/namedb/namedb_lmdb.h"
+#include "libknot/internal/namedb/namedb_trie.h"
 
-/*----------------------------------------------------------------------------*/
-/* API functions                                                              */
-/*----------------------------------------------------------------------------*/
+enum get_op {
+	GET_EQ,
+	GET_PREV,
+	GET_NEXT
+};
 
-zone_tree_t* zone_tree_create()
+#define CLEANUP(f) __attribute__ ((__cleanup__(f)))
+
+static zone_node_t *val_to_node(const namedb_val_t *val)
 {
-	return hattrie_create();
+	if (val == NULL) {
+		return NULL;
+	}
+
+	return (zone_node_t *)(val->data);
 }
 
-/*----------------------------------------------------------------------------*/
+int zone_tree_init(zone_tree_t *tree, const namedb_api_t *api, mm_ctx_t *mm)
+{
+	if (api == NULL) {
+		return KNOT_EINVAL;
+	}
+
+	tree->api = api;
+	return api->init(NULL, &tree->db, mm);
+}
 
 size_t zone_tree_weight(const zone_tree_t* tree)
 {
-	return hattrie_weight(tree);
+	namedb_txn_t tx CLEANUP(tree->api->txn_abort);
+	tree->api->txn_begin(tree, &tx, NAMEDB_RDONLY);
+	return tree->api->count(&tx);
 }
 
-int zone_tree_is_empty(const zone_tree_t *tree)
+bool zone_tree_is_empty(const zone_tree_t *tree)
 {
 	return zone_tree_weight(tree) == 0;
 }
 
-/*----------------------------------------------------------------------------*/
-
 int zone_tree_insert(zone_tree_t *tree, zone_node_t *node)
 {
-	if (tree == NULL) {
+	if (node == NULL) {
 		return KNOT_EINVAL;
 	}
+
+	namedb_txn_t tx CLEANUP(tree->api->txn_commit);
+	tree->api->txn_begin(tree, &tx, 0);
 
 	assert(tree && node && node->owner);
 	uint8_t lf[KNOT_DNAME_MAXLEN];
 	knot_dname_lf(lf, node->owner, NULL);
 
-	*hattrie_get(tree, (char*)lf+1, *lf) = node;
-	return KNOT_EOK;
+	namedb_val_t key = { .data = lf + 1, .len = *lf };
+	namedb_val_t val = { .data = node, .len = sizeof(node); };
+
+	return tree->api->insert(&tx, &key, &val, 0);
 }
 
-/*----------------------------------------------------------------------------*/
-
-int zone_tree_find(zone_tree_t *tree, const knot_dname_t *owner,
-                          const zone_node_t **found)
-{
-	if (owner == NULL || found == NULL) {
-		return KNOT_EINVAL;
-	}
-
-	return zone_tree_get(tree, owner, (zone_node_t **)found);
-}
-
-/*----------------------------------------------------------------------------*/
-
-int zone_tree_get(zone_tree_t *tree, const knot_dname_t *owner,
-                         zone_node_t **found)
+static zone_node_t *get_node(zone_tree_t *tree, const knot_dname_t *owner, unsigned op)
 {
 	if (owner == NULL) {
-		return KNOT_EINVAL;
-	}
-
-	if (zone_tree_is_empty(tree)) {
-		return KNOT_ENONODE;
-	}
-
-	uint8_t lf[KNOT_DNAME_MAXLEN];
-	knot_dname_lf(lf, owner, NULL);
-
-	value_t *val = hattrie_tryget(tree, (char*)lf+1, *lf);
-	if (val == NULL) {
-		*found = NULL;
-	} else {
-		*found = (zone_node_t*)(*val);
-	}
-
-	return KNOT_EOK;
-}
-
-/*----------------------------------------------------------------------------*/
-
-int zone_tree_find_less_or_equal(zone_tree_t *tree,
-                                 const knot_dname_t *owner,
-                                 const zone_node_t **found,
-                                 const zone_node_t **previous)
-{
-	if (owner == NULL || found == NULL || previous == NULL) {
-		return KNOT_EINVAL;
-	}
-
-	zone_node_t *f = NULL, *p = NULL;
-	int ret = zone_tree_get_less_or_equal(tree, owner, &f, &p);
-
-	*found = f;
-	*previous = p;
-
-	return ret;
-}
-
-/*----------------------------------------------------------------------------*/
-
-int zone_tree_get_less_or_equal(zone_tree_t *tree,
-                                const knot_dname_t *owner,
-                                zone_node_t **found,
-                                zone_node_t **previous)
-{
-	if (owner == NULL || found == NULL || previous == NULL) {
-		return KNOT_EINVAL;
-	}
-
-	if (zone_tree_is_empty(tree)) {
-		return KNOT_ENONODE;
-	}
-
-	uint8_t lf[KNOT_DNAME_MAXLEN];
-	knot_dname_lf(lf, owner, NULL);
-
-	value_t *fval = NULL;
-	int ret = hattrie_find_leq(tree, (char*)lf+1, *lf, &fval);
-	if (fval) {
-		*found = (zone_node_t *)(*fval);
-	}
-	int exact_match = 0;
-	if (ret == 0) {
-		if (fval) {
-			*previous = (*found)->prev;
-		}
-		exact_match = 1;
-	} else if (ret < 0) {
-		*previous = *found;
-		*found = NULL;
-	} else if (ret > 0) {
-		/*
-		 * Previous should be the rightmost node.
-		 */
-		hattrie_iter_t *i = hattrie_iter_begin(tree, 1);
-		zone_node_t *leftmost = *(zone_node_t **)hattrie_iter_val(i);
-		*previous = leftmost->prev; /* rightmost */
-		*found = NULL;
-		hattrie_iter_free(i);
-	}
-
-	return exact_match;
-}
-
-/*----------------------------------------------------------------------------*/
-
-zone_node_t *zone_tree_get_next(zone_tree_t *tree,
-                                const knot_dname_t *owner)
-{
-	if (tree == NULL || owner == NULL) {
 		return NULL;
 	}
 
 	uint8_t lf[KNOT_DNAME_MAXLEN];
 	knot_dname_lf(lf, owner, NULL);
-
-	value_t *fval = NULL;
-	zone_node_t *n = NULL;
-	(void)hattrie_find_next(tree, (char*)lf + 1, *lf, &fval);
-	if (fval == NULL) {
-		/* Return first node. */
-		hattrie_iter_t *it = hattrie_iter_begin(tree, true);
-		if (it == NULL) {
-			return NULL;
-		}
-		fval = hattrie_iter_val(it);
-		hattrie_iter_free(it);
+	if (op == NAMEDB_LEQ) {
+#warning this will only work with trie
+		lf[*lf - 1]--;
 	}
-	
-	n = (zone_node_t *)*fval;
-	/* Next node must be non-empty and auth. */
-//	if (n->rrset_count == 0 || n->flags & NODE_FLAGS_NONAUTH) {
-//		return zone_tree_get_next(tree, n->owner);
-//	} else {
+
+	namedb_val_t key = { .data = lf + 1, .size = *lf };
+	namedb_val_t val = { '\0' };
+
+	namedb_txn_t tx CLEANUP(tree->api->txn_abort);
+	tree->api->txn_begin(tree, &tx, 0);
+	int ret = tree->api->find(&tx, &key, &val, op);
+	if (ret != KNOT_EOK) {
+		return NULL;
+	}
+
+	return val_to_node(&val);
+}
+
+zone_node_t *zone_tree_get(zone_tree_t *tree, const knot_dname_t *owner)
+{
+	return get_node(tree, owner, 0);
+}
+
+zone_node_t *zone_tree_get_next(zone_tree_t *tree, const knot_dname_t *owner)
+{
+	zone_node_t *n = get_node(tree, owner, NAMEDB_NEXT);
+	if (n) {
 		return n;
-//	}
+	}
+
+	return get_node(tree, owner, NAMEDB_FIRST);
 }
 
-zone_node_t *zone_tree_get_prev(zone_tree_t *tree,
-                                const knot_dname_t *owner)
+zone_node_t *zone_tree_get_prev(zone_tree_t *tree, const knot_dname_t *owner)
 {
-	if (tree == NULL || owner == NULL) {
-		return NULL;
-	}
-
-	uint8_t lf[KNOT_DNAME_MAXLEN];
-	knot_dname_lf(lf, owner, NULL);
-	lf[*lf - 1]--;
-	
-	value_t *fval = NULL;
-	hattrie_find_leq(tree, (char*)lf+1, *lf, &fval);
-	if (fval) {
-		return (zone_node_t *)(*fval);
+	if (tree->api == namedb_trie_api()) {
+		const size_t size = knot_dname_size(owner);
+		knot_dname_t less[size];
+		memcpy(less, owner, size);
+		less[size - 1] -= 1;
+		owner = less;
 	} else {
-		return (zone_node_t *)(*hattrie_find_rightmost_node(tree));
+#warning sort this out
+		assert(0);
 	}
-}
 
-/*----------------------------------------------------------------------------*/
+	zone_node_t *n = get_node(tree, owner, NAMEDB_LEQ);
+	if (n) {
+		return n;
+	}
+
+	return get_node(tree, owner, NAMEDB_LAST);
+}
 
 int zone_tree_remove(zone_tree_t *tree,
                      const knot_dname_t *owner,
@@ -248,8 +168,6 @@ int zone_tree_remove(zone_tree_t *tree,
 	return KNOT_EOK;
 }
 
-/*----------------------------------------------------------------------------*/
-
 int zone_tree_apply_inorder(zone_tree_t *tree,
                             zone_tree_apply_cb_t function,
                             void *data)
@@ -277,8 +195,6 @@ int zone_tree_apply_inorder(zone_tree_t *tree,
 	return result;
 }
 
-/*----------------------------------------------------------------------------*/
-
 int zone_tree_apply(zone_tree_t *tree,
                     zone_tree_apply_cb_t function,
                     void *data)
@@ -294,8 +210,6 @@ int zone_tree_apply(zone_tree_t *tree,
 	return hattrie_apply_rev(tree, (int (*)(value_t*,void*))function, data);
 }
 
-/*----------------------------------------------------------------------------*/
-
 void zone_tree_free(zone_tree_t **tree)
 {
 	if (tree == NULL || *tree == NULL) {
@@ -304,8 +218,6 @@ void zone_tree_free(zone_tree_t **tree)
 	hattrie_free(*tree);
 	*tree = NULL;
 }
-
-/*----------------------------------------------------------------------------*/
 
 static int zone_tree_free_node(zone_node_t **node, void *data)
 {
