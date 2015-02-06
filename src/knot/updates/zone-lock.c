@@ -16,12 +16,14 @@
 
 #include <urcu.h>
 
+#include "libknot/errcode.h"
+#include "libknot/internal/macros.h"
 #include "knot/updates/zone-lock.h"
 
 int zone_lock_init(zone_lock_t *l, const lock_type_t type)
 {
 	l->type = type;
-	if (type == LOCK_RCU) {
+	if (type == ZLOCK_RCU) {
 		l->context = NULL;
 	} else {
 		l->context = malloc(sizeof(pthread_mutex_t));

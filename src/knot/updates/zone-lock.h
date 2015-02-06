@@ -27,8 +27,9 @@
 #pragma once
 
 typedef enum {
-	LOCK_RCU = 0,
-	LOCK_RW = 1
+	ZLOCK_RCU = 0,
+	ZLOCK_RW = 1,
+	ZLOCK_NONE = 2
 } lock_type_t;
 
 typedef struct zone_lock {

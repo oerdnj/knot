@@ -81,11 +81,10 @@ static void fix_wildcard_child(zone_node_t *node, const knot_dname_t *owner)
 /*! \brief Deletes possibly empty node and all its empty parents recursively. */
 static void delete_empty_node(zone_tree_t *tree, zone_node_t *node)
 {
-	if (node->rrset_count == 0 && node->children == 0) {
+	if (node->rrset_count == 0 && !zone_contents_has_children(tree, node->owner)) {
 		zone_node_t *parent_node = node->parent;
 		if (parent_node) {
 			fix_wildcard_child(parent_node, node->owner);
-			parent_node->children--;
 			// Recurse using the parent node
 			delete_empty_node(tree, parent_node);
 		}

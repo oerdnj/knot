@@ -14,6 +14,8 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <assert.h>
+
 #include "knot/updates/zone-update.h"
 #include "knot/updates/changesets.h"
 #include "knot/updates/apply.h"
@@ -149,6 +151,15 @@ static int init_full(zone_update_t *update, zone_t *zone)
 	return KNOT_EOK;
 }
 
+static const zone_node_t *get_node(const zone_contents_t *cont, const knot_dname_t *dname)
+{
+	const zone_node_t *n = zone_contents_find_node_for_type(cont, dname, KNOT_RRTYPE_ANY);
+	if (n == NULL) {
+		n = zone_contents_find_node_for_type(cont, dname, KNOT_RRTYPE_NSEC3);
+	}
+	return n;
+}
+
 /* ------------------------------- API -------------------------------------- */
 
 int zone_update_init(zone_update_t *update, zone_t *zone, zone_update_flags_t flags)
@@ -179,18 +190,14 @@ const zone_node_t *zone_update_get_node(zone_update_t *update, const knot_dname_
 		return NULL;
 	}
 
-	const zone_node_t *old_node =
-		zone_contents_find_node(update->new_cont, dname);
+	const zone_node_t *old_node = get_node(update->new_cont, dname);
 	if (update->flags & UPDATE_FULL) {
 		// No changeset, no changes.
 		return old_node;
 	}
 	
-	const zone_node_t *add_node =
-		zone_contents_find_node(update->change.add, dname);
-	const zone_node_t *rem_node =
-		zone_contents_find_node(update->change.remove, dname);
-
+	const zone_node_t *add_node = get_node(update->change.add, dname);
+	const zone_node_t *rem_node = get_node(update->change.remove, dname);
 	const bool have_change = !node_empty(add_node) || !node_empty(rem_node);
 	if (!have_change) {
 		// Nothing to apply
@@ -231,7 +238,7 @@ const zone_node_t *zone_update_get_apex(const zone_update_t *update)
 	return zone_update_get_node(update, update->zone->name);
 }
 
-uint32_t zone_update_serial(zone_update_t *update)
+uint32_t zone_update_current_serial(zone_update_t *update)
 {
 	const zone_node_t *apex = zone_update_get_apex(update);
 	if (apex) {
@@ -239,6 +246,18 @@ uint32_t zone_update_serial(zone_update_t *update)
 	} else {
 		return 0;
 	}
+}
+
+const knot_rdataset_t *zone_update_from(zone_update_t *update)
+{
+	const zone_node_t *apex = update->zone->contents->apex;
+	return node_rdataset(apex, KNOT_RRTYPE_SOA);
+}
+
+const knot_rdataset_t *zone_update_to(zone_update_t *update)
+{
+#warning change to normal zone node, no special field
+	return &update->change.soa_to->rrs;
 }
 
 void zone_update_clear(zone_update_t *update)
@@ -304,8 +323,7 @@ int zone_update_add(zone_update_t *update, const knot_rrset_t *rrset)
 	if (update->flags & UPDATE_INCREMENTAL) {
 		return changeset_add_rrset(&update->change, rrset);
 	} else if (update->flags & UPDATE_FULL) {
-		zone_node_t *n;
-		return zone_contents_add_rr(update->new_cont, rrset, &n);
+		return zone_contents_add_rr(update->new_cont, rrset);
 	} else {
 		return KNOT_EINVAL;
 	}
@@ -559,8 +577,7 @@ int zone_update_load_contents(zone_update_t *up)
 	assert(up->flags & UPDATE_FULL);
 
 	zloader_t zl = { 0 };
-	int ret = zonefile_open(&zl, up->zone->conf->file, up->zone->conf->name,
-	                        up->zone->conf->enable_checks);
+	int ret = zonefile_open(&zl, up->zone->conf->file, up->zone->conf->name);
 	if (ret != KNOT_EOK) {
 		return ret;
 	}
@@ -570,12 +587,13 @@ int zone_update_load_contents(zone_update_t *up)
 	 */
 	zl.creator->master = !EMPTY_LIST(up->zone->conf->acl.xfr_in);
 
-	zone_contents_t *zone_contents = zonefile_load(&zl);
+	ret = zonefile_load(&zl);
 	zonefile_close(&zl);
-	if (zone_contents == NULL) {
-		return NULL;
+	if (ret != KNOT_EOK) {
+		return ret;
 	}
 
-	return zone_contents;
+	assert(up->new_cont);
+	return KNOT_EOK;
 }
 

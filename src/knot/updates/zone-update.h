@@ -53,7 +53,8 @@ typedef enum {
 	UPDATE_FULL = 1 << 0,
 	UPDATE_INCREMENTAL = 1 << 1,
 	UPDATE_SIGN = 1 << 2,
-	UPDATE_DIFF = 1 << 3
+	UPDATE_DIFF = 1 << 3,
+	UPDATE_REPLACE_CNAMES = 1 << 4
 } zone_update_flags_t;
 
 /*!
@@ -78,7 +79,10 @@ int zone_update_init(zone_update_t *update, zone_t *zone, zone_update_flags_t fl
 const zone_node_t *zone_update_get_node(zone_update_t *update,
                                         const knot_dname_t *dname);
 const zone_node_t *zone_update_get_apex(const zone_update_t *update);
-uint32_t zone_update_serial(zone_update_t *update);
+uint32_t zone_update_current_serial(zone_update_t *update);
+
+const knot_rdataset_t *zone_update_from(zone_update_t *update);
+const knot_rdataset_t *zone_update_to(zone_update_t *update);
 
 /*!
  * \brief Clear data allocated by given zone update structure.

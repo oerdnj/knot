@@ -27,10 +27,7 @@
 /*! \brief Adds RRSet to given zone. */
 static int add_rr_to_zone(zone_contents_t *z, const knot_rrset_t *rrset)
 {
-	zone_node_t *n = NULL;
-	int ret = zone_contents_add_rr(z, rrset, &n);
-	UNUSED(n);
-	return ret;
+	return zone_contents_add_rr(z, rrset);
 }
 
 /*! \brief Cleans up trie iterations. */
@@ -211,6 +208,14 @@ size_t changeset_size(const changeset_t *ch)
 
 int changeset_add_rrset(changeset_t *ch, const knot_rrset_t *rrset)
 {
+	if (rrset->type == KNOT_RRTYPE_SOA) {
+		if (ch->soa_to == NULL) {
+			ch->soa_to = knot_rrset_copy(rrset, NULL);
+			if (ch->soa_to == NULL) {
+				return KNOT_ENOMEM;
+			}
+		}
+	}
 	return add_rr_to_zone(ch->add, rrset);
 }
 
@@ -225,7 +230,6 @@ void changeset_clear(changeset_t *ch)
 		return;
 	}
 
-	// Delete RRSets in lists, in case there are any left
 	zone_contents_deep_free(&ch->add);
 	zone_contents_deep_free(&ch->remove);
 

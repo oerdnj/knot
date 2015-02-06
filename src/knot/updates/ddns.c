@@ -21,7 +21,6 @@
 #include "knot/updates/ddns.h"
 #include "knot/updates/changesets.h"
 #include "knot/updates/zone-update.h"
-#include "knot/zone/serial.h"
 #include "libknot/packet/pkt.h"
 #include "libknot/consts.h"
 #include "libknot/rrtype/soa.h"
@@ -261,7 +260,6 @@ static bool should_replace(const knot_rrset_t *rrset)
 	       rrset->type == KNOT_RRTYPE_NSEC3PARAM;
 }
 
-
 /*!< \brief Returns true if node contains given RR in its RRSets. */
 static bool node_contains_rr(const zone_node_t *node,
                              const knot_rrset_t *rr)
@@ -359,7 +357,8 @@ static int process_rem_rrset(const knot_rrset_t *rrset,
                              const zone_node_t *node,
                              zone_update_t *update)
 {
-	if (rrset->type == KNOT_RRTYPE_SOA || knot_rrtype_is_dnssec(rrset->type)) {
+	if (rrset->type == KNOT_RRTYPE_SOA ||
+	    knot_rrtype_is_ddns_forbidden(rrset->type)) {
 		// Ignore SOA and DNSSEC removals.
 		return KNOT_EOK;
 	}
@@ -386,7 +385,7 @@ static int process_rem_rrset(const knot_rrset_t *rrset,
 
 /*!< \brief Removes node from zone. */
 static int process_rem_node(const knot_rrset_t *rr,
-                            const zone_node_t *node, changeset_t *changeset)
+                            const zone_node_t *node, zone_update_t *update)
 {
 	if (node == NULL) {
 		return KNOT_EOK;
