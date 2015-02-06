@@ -48,8 +48,6 @@ typedef struct zcreator {
 typedef struct zloader {
 	char *source;                /*!< Zone source file. */
 	char *origin;                /*!< Zone's origin string. */
-	bool semantic_checks;        /*!< Do semantic checks. */
-	err_handler_t *err_handler;  /*!< Semantic checks error handler. */
 	zs_scanner_t *scanner;       /*!< Zone scanner. */
 	zcreator_t *creator;         /*!< Loader context. */
 } zloader_t;
@@ -60,13 +58,11 @@ typedef struct zloader {
  * \param loader Output zone loader.
  * \param source Source file name.
  * \param origin Zone origin.
- * \param semantic_checks Perform semantic checks.
  *
  * \retval Initialized loader on success.
  * \retval NULL on error.
  */
-int zonefile_open(zloader_t *loader, const char *source, const char *origin,
-		  bool semantic_checks);
+int zonefile_open(zloader_t *loader, const char *source, const char *origin);
 
 /*!
  * \brief Loads zone from a zone file.

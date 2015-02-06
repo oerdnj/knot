@@ -88,8 +88,10 @@ static bool handle_err(zcreator_t *zc, const knot_rrset_t *rr, int ret, bool mas
 void log_ttl_error(const zone_contents_t *zone, const zone_node_t *node,
 		   const knot_rrset_t *rr)
 {
-	err_handler_t err_handler;
-	err_handler_init(&err_handler);
+	return;
+#warning extract handler from semchecks
+//	err_handler_t err_handler;
+//	err_handler_init(&err_handler);
 	// Prepare additional info string.
 	char info_str[64] = { '\0' };
 	char type_str[16] = { '\0' };
@@ -101,8 +103,9 @@ void log_ttl_error(const zone_contents_t *zone, const zone_node_t *node,
 	}
 
 	/*!< \todo REPLACE WITH FATAL ERROR for master. */
-	err_handler_handle_error(&err_handler, zone, node,
-	                         ZC_ERR_TTL_MISMATCH, info_str);
+#warning ...
+//	log_semantic_error(&err_handler, zone, node,
+//	                         ZC_ERR_TTL_MISMATCH, info_str);
 }
 
 int zcreator_step(zcreator_t *zc, const knot_rrset_t *rr)
@@ -132,8 +135,8 @@ int zcreator_step(zcreator_t *zc, const knot_rrset_t *rr)
 	}
 
 	// Do node semantic checks
-	err_handler_t err_handler;
-	err_handler_init(&err_handler);
+//	err_handler_t err_handler;
+//	err_handler_init(&err_handler);
 	bool sem_fatal_error = false;
 
 #warning move semchecks into zone_updater.
@@ -189,8 +192,7 @@ static void scanner_process(zs_scanner_t *scanner)
 	knot_rdataset_clear(&rr.rrs, NULL);
 }
 
-int zonefile_open(zloader_t *loader, const char *source, const char *origin,
-		  bool semantic_checks)
+int zonefile_open(zloader_t *loader, const char *source, const char *origin)
 {
 	if (!loader) {
 		return KNOT_EINVAL;
@@ -221,7 +223,6 @@ int zonefile_open(zloader_t *loader, const char *source, const char *origin,
 	loader->source = strdup(source);
 	loader->origin = strdup(origin);
 	loader->creator = zc;
-	loader->semantic_checks = semantic_checks;
 
 	return KNOT_EOK;
 }
@@ -263,7 +264,7 @@ int zonefile_load(zloader_t *loader)
 	}
 
 	/* Fetch SOA serial. */
-	const uint32_t serial = zone_update_serial(zc->up);
+	const uint32_t serial = zone_update_current_serial(zc->up);
 
 	changeset_t ch;
 	ret = changeset_init(&ch, zname);
@@ -363,7 +364,7 @@ int zonefile_write(const char *path, zone_contents_t *zone,
 	FILE *f = fdopen(fd, "w");
 	if (f == NULL) {
 		WARNING(zname, "failed to open zone, file '%s' (%s)",
-		        new_fname, knot_strerror(-errno));
+		        new_fname, knot_strerror(knot_errno_to_error(errno)));
 		unlink(new_fname);
 		free(new_fname);
 		return KNOT_ERROR;
