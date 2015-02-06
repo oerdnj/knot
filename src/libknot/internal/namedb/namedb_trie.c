@@ -22,14 +22,26 @@
 #include "libknot/internal/trie/hat-trie.h"
 #include "libknot/internal/mempattern.h"
 
-static int init(namedb_t **db, mm_ctx_t *mm, void *arg)
+static value_t *first_val(hattrie_t *t)
 {
-	if (db == NULL || arg == NULL) {
+	hattrie_iter_t *it = hattrie_iter_begin(t, true);
+	if (it == NULL) {
+		return NULL;
+	}
+
+	value_t *val = hattrie_iter_val(it);
+	hattrie_iter_free(it);
+
+	return val;
+}
+
+static int init(const char *config, namedb_t **db, mm_ctx_t *mm)
+{
+	if (config != NULL || db == NULL) {
 		return KNOT_EINVAL;
 	}
-	
-	struct namedb_trie_opts *opts = arg;
-	hattrie_t *trie = hattrie_create_n(opts->bucket_size, mm);
+
+	hattrie_t *trie = hattrie_create_n(TRIE_BUCKET_SIZE, mm);
 	if (!trie) {
 		return KNOT_ENOMEM;
 	}
@@ -80,7 +92,27 @@ static int clear(namedb_txn_t *txn)
 
 static int find(namedb_txn_t *txn, namedb_val_t *key, namedb_val_t *val, unsigned flags)
 {
-	value_t *ret = hattrie_tryget((hattrie_t *)txn->db, key->data, key->len);
+	// Clear non-operation flags.
+	const unsigned op = flags & ~(NAMEDB_RDONLY | NAMEDB_SORTED);
+	value_t *ret = NULL;
+	switch(op) {
+	case 0:
+		ret = hattrie_tryget((hattrie_t *)txn->db, key->data, key->len);
+		break;
+	case NAMEDB_LEQ:
+		hattrie_find_leq((hattrie_t *)txn->db, key->data, key->len, &ret);
+		break;
+	case NAMEDB_NEXT:
+		hattrie_find_next((hattrie_t *)txn->db, key->data, key->len, &ret);
+		break;
+	case NAMEDB_FIRST:
+		ret = first_val((hattrie_t *)txn->db);
+	case NAMEDB_LAST:
+		ret = hattrie_find_rightmost_node((hattrie_t *)txn->db);
+	default:
+		return KNOT_EINVAL;
+	}
+
 	if (ret == NULL) {
 		return KNOT_ENOENT;
 	}
@@ -119,18 +151,47 @@ static namedb_iter_t *iter_begin(namedb_txn_t *txn, unsigned flags)
 	return hattrie_iter_begin((hattrie_t *)txn->db, is_sorted);
 }
 
+static void iter_set_last(hattrie_iter_t *iter)
+{
+	
+}
+
 static namedb_iter_t *iter_seek(namedb_iter_t *iter, namedb_val_t *key, unsigned flags)
 {
-	assert(0);
-	return NULL; /* ENOTSUP */
+	assert(key == NULL);
+	switch(flags) {
+	case NAMEDB_NOOP:
+		return iter;
+	case NAMEDB_FIRST:
+		hattrie_iter_free(iter);
+		iter = malloc(sizeof(*iter));
+		if (iter) {
+			hattrie_iter_init(iter, NULL, NULL);
+		}
+		break;
+	case NAMEDB_LAST:
+		iter_set_last(iter);
+		break;
+	case NAMEDB_NEXT:
+		hattrie_iter_next(iter);
+		break;
+	case NAMEDB_PREV:
+	case NAMEDB_LEQ:
+	case NAMEDB_GEQ: assert(0);
+	default: break;
+	}
+
+	return iter;
 }
 
 static namedb_iter_t *iter_next(namedb_iter_t *iter)
 {
-	hattrie_iter_next((hattrie_iter_t *)iter);
-	if (hattrie_iter_finished((hattrie_iter_t *)iter)) {
-		hattrie_iter_free((hattrie_iter_t *)iter);
-		return NULL;
+	if (iter) {
+		hattrie_iter_next((hattrie_iter_t *)iter);
+		if (hattrie_iter_finished((hattrie_iter_t *)iter)) {
+			hattrie_iter_free((hattrie_iter_t *)iter);
+			return NULL;
+		}
 	}
 
 	return iter;
