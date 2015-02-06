@@ -18,13 +18,13 @@
 #include "libknot/descriptor.h"
 #include "libknot/rrtype/rdname.h"
 #include "libknot/rrtype/soa.h"
-#include "knot/dnssec/rrset-sign.h"
+#include "libknot/dnssec/rrset-sign.h"
 #include "knot/nameserver/internet.h"
 #include "knot/nameserver/nsec_proofs.h"
 #include "knot/nameserver/process_query.h"
 #include "knot/nameserver/process_answer.h"
-#include "knot/zone/serial.h"
 #include "knot/zone/zonedb.h"
+#include "knot/zone/node-ref.h"
 
 /*! \brief Check if given node was already visited. */
 static int wildcard_has_visited(struct query_data *qdata, const zone_node_t *node)
@@ -518,15 +518,17 @@ static int name_not_found(knot_pkt_t *pkt, struct query_data *qdata)
 static int solve_name(int state, knot_pkt_t *pkt, struct query_data *qdata)
 {
 	dbg_ns("%s(%d, %p, %p)\n", __func__, state, pkt, qdata);
-	int ret = zone_contents_find_dname(qdata->zone->contents, qdata->name,
-	                                        &qdata->node, &qdata->encloser,
-	                                        &qdata->previous);
+#warning direct get
+	int ret = 0;//zone_contents_find_dname(qdata->zone->contents, qdata->name,
+//	                                        &qdata->node, &qdata->encloser,
+//	                                        &qdata->previous);
 
 	switch(ret) {
-	case ZONE_NAME_FOUND:
-		return name_found(pkt, qdata);
-	case ZONE_NAME_NOT_FOUND:
-		return name_not_found(pkt, qdata);
+#warning do this differently - no custom ret codes
+//	case ZONE_NAME_FOUND:
+//		return name_found(pkt, qdata);
+//	case ZONE_NAME_NOT_FOUND:
+//		return name_not_found(pkt, qdata);
 	case KNOT_EOUTOFZONE:
 		assert(state == FOLLOW); /* CNAME/DNAME chain only. */
 		return HIT;
