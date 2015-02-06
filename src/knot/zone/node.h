@@ -47,7 +47,6 @@ typedef struct zone_node {
 	struct rr_data *rrs;
 	struct node_ref *prev; /*! Previous node in canonical order. */
 	struct node_ref *nsec3_node; /*! NSEC3 node corresponding to this node. */
-	uint32_t children; /*!< Count of children nodes in DNS hierarchy. */
 	uint16_t rrset_count; /*!< Number of RRSets stored in the node. */
 	uint8_t flags; /*!< \ref node_flags enum. */
 } zone_node_t;
@@ -162,16 +161,6 @@ knot_rrset_t *node_create_rrset(const zone_node_t *node, uint16_t type);
  * \return Pointer to data if found, NULL otherwise.
  */
 knot_rdataset_t *node_rdataset(const zone_node_t *node, uint16_t type);
-
-/* ---------------------------- Parent setter ------------------------------- */
-
-/*!
- * \brief Sets the parent of the node. Also adjusts children count of parent.
- *
- * \param node Node to set the parent of.
- * \param parent Parent to set to the node.
- */
-void node_set_parent(zone_node_t *node, zone_node_t *parent);
 
 /* ----------------------------- Bool checks -------------------------------- */
 

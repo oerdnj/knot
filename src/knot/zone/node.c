@@ -101,7 +101,7 @@ zone_node_t *node_new(const knot_dname_t *owner, mm_ctx_t *mm)
 	if (owner) {
 		ret->owner = knot_dname_copy(owner, mm);
 		if (ret->owner == NULL) {
-			node_free(&ret);
+			node_free(&ret, mm);
 			return NULL;
 		}
 	}
@@ -130,7 +130,7 @@ void node_free(zone_node_t **node, mm_ctx_t *mm)
 	if (node == NULL || *node == NULL) {
 		return;
 	}
-	(*node)->self_ref->flags |= REF_
+	node_ref_invalidate((*node)->self_ref);
 
 	if ((*node)->rrs != NULL) {
 		mm_free(mm, (*node)->rrs);
@@ -243,25 +243,6 @@ knot_rdataset_t *node_rdataset(const zone_node_t *node, uint16_t type)
 	}
 
 	return NULL;
-}
-
-void node_set_parent(zone_node_t *node, zone_node_t *parent)
-{
-	if (node == NULL || node->parent == parent) {
-		return;
-	}
-
-	// decrease number of children of previous parent
-	if (node->parent != NULL) {
-		--node->parent->children;
-	}
-	// set the parent
-	node->parent = parent;
-
-	// increase the count of children of the new parent
-	if (parent != NULL) {
-		++parent->children;
-	}
 }
 
 bool node_rrtype_is_signed(const zone_node_t *node, uint16_t type)
