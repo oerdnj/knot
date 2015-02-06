@@ -15,11 +15,11 @@
 */
 
 #include "knot/zone/node-ref.h"
+#include "knot/updates/zone-read.h"
 #include "knot/dnssec/zone-nsec.h"
 
 enum ref_states {
-	REF_VALID = 1 << 0,
-	REF_DELETED = 1 << 1
+	REF_VALID = 1 << 0
 };
 
 static void ref_inc(node_ref_t *r)
@@ -40,61 +40,66 @@ static void ref_dec(node_ref_t *r)
 	}
 }
 
-static ref_node_t *fetch_node_ref(zone_node_t *n)
+static node_ref_t *fetch_node_ref(zone_node_t *n)
 {
 	if (n == NULL) {
 		return NULL;
 	}
 	if (n->self_ref == NULL) {
 		n->self_ref = node_ref_new((const zone_node_t *)n);
-		if (found->self_ref == NULL) {
+		if (n->self_ref == NULL) {
 			return NULL;
 		}
 	}
-	assert(n->self_ref & REF_VALID);
+	assert(n->self_ref->flags & REF_VALID);
 
 	return n->self_ref;
 }
 
-static const zone_node_t *get_prev(zone_read_t *zr, const knot_dname_t *owner)
+typedef struct zone_node* (*ref_get_t)(zone_read_t *, const knot_dname_t *, const bool);
+
+static zone_node_t *get_prev(zone_read_t *zr, const knot_dname_t *owner, const bool nsec3)
 {
-#warning zone contents used directly
-	return zone_contents_find_previous(zr->zone->contents, owner);
+	return (zone_node_t *)zone_read_previous_for_type(zr, owner, nsec3 ? KNOT_RRTYPE_NSEC3 : KNOT_RRTYPE_ANY);
 }
 
-static const zone_node_t *get_parent(zone_read_t *zr, const knot_dname_t *owner)
+static zone_node_t *get_parent(zone_read_t *zr, const knot_dname_t *owner, const bool nsec3)
 {
-	return zone_read_find_node(zr, knot_wire_next_label(owner));
+	UNUSED(nsec3);
+	return (zone_node_t *)zone_read_node_for_type(zr, knot_wire_next_label(owner, NULL), KNOT_RRTYPE_ANY);
 }
 
-static const zone_node_t *get_nsec3(zone_read_t *zr, const knot_dname_t *owner)
+static zone_node_t *get_nsec3(zone_read_t *zr, const knot_dname_t *owner, const bool nsec3)
 {
+	UNUSED(nsec3);
 	// Get NSEC3PARAM
-	knot_rdataset_t *nsec3param = node_rdataset(zone_read_get_apex(zr), KNOT_RRTYPE_NSEC3PARAM);
+	const knot_rdataset_t *nsec3param =
+		node_rdataset(zone_read_apex(zr), KNOT_RRTYPE_NSEC3PARAM);
 	if (nsec3param) {
 		// Create NSEC3 hash
 		knot_dname_t *nsec3 = knot_create_nsec3_owner(owner, zr->zone->name, nsec3param);
 		if (nsec3) {
 			const zone_node_t *n = zone_read_node_for_type(zr, nsec3, KNOT_RRTYPE_NSEC3);
 			knot_dname_free(&nsec3, NULL);
-			return n;
+			return (zone_node_t *)n;
 		}
-	} else {
-		return NULL;
 	}
+
+	return NULL;
 }
 
-const zone_node_t *node_ref_get(const zone_node_t *n, ref_type_t type, zone_read_t *zr)
+const struct zone_node *node_ref_get(const struct zone_node *n, uint8_t flags, zone_read_t *zone_reader)
 {
 	node_ref_t **r = NULL;
-	(const zone_node_t *)(*get_func)(zone_read_t *, knot_dname_t *) = NULL;
+	uint8_t type = flags & ~REF_NSEC3;
+	ref_get_t get_func = NULL;
 	switch(type) {
-	case REF_PREV:
+	case REF_PREVIOUS:
 		r = &n->prev;
 		get_func = get_prev;
 	case REF_PARENT:
 		r = &n->parent;
-		get_func = get_par;
+		get_func = get_parent;
 	case REF_NSEC3:
 		r = &n->nsec3_node;
 		get_func = get_nsec3;
@@ -105,18 +110,17 @@ const zone_node_t *node_ref_get(const zone_node_t *n, ref_type_t type, zone_read
 
 	assert(r && get_func);
 	if (*r && (*r)->flags & REF_VALID) {
-		return r->n;
+		return (*r)->n;
 	} else {
 		ref_dec(*r);
-		node_ref_t *found_ref = fetch_node_ref(get_func(zr, n->owner));
+		node_ref_t *found_ref = fetch_node_ref(get_func(zone_reader, n->owner, flags & REF_NSEC3));
 		ref_inc(found_ref);
-		__sync_val_compare_and_swap(*r, found_ref, *r);
-
+		(void)__sync_val_compare_and_swap(r, found_ref, r);
 		return found_ref ? found_ref->n : NULL;
 	}
 }
 
-node_ref_t *node_ref_new(const zone_node *n)
+node_ref_t *node_ref_new(const struct zone_node *n)
 {
 	node_ref_t *ref = malloc(sizeof(node_ref_t));
 	if (ref == NULL) {
@@ -128,5 +132,10 @@ node_ref_t *node_ref_new(const zone_node *n)
 	ref->flags = REF_VALID;
 
 	return ref;
+}
+
+void node_ref_invalidate(node_ref_t *ref)
+{
+	(void)__sync_val_compare_and_swap(&ref->flags, ref->flags & ~REF_VALID, &ref->flags);
 }
 
