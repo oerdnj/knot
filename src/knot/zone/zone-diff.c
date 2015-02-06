@@ -21,7 +21,6 @@
 #include "knot/common/debug.h"
 #include "libknot/errcode.h"
 #include "knot/zone/zone-diff.h"
-#include "knot/zone/serial.h"
 #include "libknot/descriptor.h"
 #include "libknot/internal/utils.h"
 #include "libknot/rrtype/soa.h"
@@ -84,10 +83,6 @@ static int knot_zone_diff_load_soas(const zone_contents_t *zone1,
 		return KNOT_ENOMEM;
 	}
 
-	dbg_zonediff_verb("zone_diff: load_soas: SOAs diffed. "
-	                  "(%"PRId64" -> %"PRId64")\n",
-	                  soa_serial1, soa_serial2);
-
 	return KNOT_EOK;
 }
 
@@ -99,8 +94,6 @@ static int knot_zone_diff_add_node(const zone_node_t *node,
 		knot_rrset_t rrset = node_rrset_at(node, i);
 		int ret = changeset_add_rrset(changeset, &rrset);
 		if (ret != KNOT_EOK) {
-			dbg_zonediff("zone_diff: add_node: Cannot add RRSet (%s).\n",
-			             knot_strerror(ret));
 			return ret;
 		}
 	}
@@ -116,9 +109,6 @@ static int knot_zone_diff_remove_node(changeset_t *changeset,
 		knot_rrset_t rrset = node_rrset_at(node, i);
 		int ret = changeset_rem_rrset(changeset, &rrset);
 		if (ret != KNOT_EOK) {
-			dbg_zonediff("zone_diff: remove_node: Failed to "
-			             "remove rrset. Error: %s\n",
-			             knot_strerror(ret));
 			return ret;
 		}
 	}
@@ -139,8 +129,6 @@ static int knot_zone_diff_rdata_return_changes(const knot_rrset_t *rrset1,
                                                knot_rrset_t *changes)
 {
 	if (rrset1 == NULL || rrset2 == NULL) {
-		dbg_zonediff("zone_diff: diff_rdata: NULL arguments. (%p) (%p).\n",
-		             rrset1, rrset2);
 		return KNOT_EINVAL;
 	}
 
@@ -253,7 +241,7 @@ static int knot_zone_diff_node(zone_node_t **node_ptr, void *data)
 	const knot_dname_t *node_owner = node->owner;
 	assert(node_owner);
 
-	zone_tree_find(param->nodes, node_owner, &node_in_second_tree);
+	node_in_second_tree = zone_tree_get(param->nodes, node_owner);
 
 	if (node_in_second_tree == NULL) {
 		return knot_zone_diff_remove_node(param->changeset, node);
@@ -327,7 +315,6 @@ static int knot_zone_diff_node(zone_node_t **node_ptr, void *data)
 static int knot_zone_diff_add_new_nodes(zone_node_t **node_ptr, void *data)
 {
 	if (node_ptr == NULL || *node_ptr == NULL || data == NULL) {
-		dbg_zonediff("zone_diff: add_new_nodes: NULL arguments.\n");
 		return KNOT_EINVAL;
 	}
 
@@ -335,7 +322,6 @@ static int knot_zone_diff_add_new_nodes(zone_node_t **node_ptr, void *data)
 
 	struct zone_diff_param *param = (struct zone_diff_param *)data;
 	if (param->changeset == NULL) {
-		dbg_zonediff("zone_diff: add_new_nodes: NULL arguments.\n");
 		return KNOT_EINVAL;
 	}
 
@@ -353,22 +339,15 @@ static int knot_zone_diff_add_new_nodes(zone_node_t **node_ptr, void *data)
 	assert(node_owner);
 
 	zone_node_t *new_node = NULL;
-	zone_tree_get(param->nodes, node_owner, &new_node);
-
-	int ret = KNOT_EOK;
+#warning zone_read here
+//	zone_tree_get(param->nodes, node_owner, &new_node);
 
 	if (!new_node) {
 		assert(node);
-		ret = knot_zone_diff_add_node(node, param->changeset);
-		if (ret != KNOT_EOK) {
-			dbg_zonediff("zone_diff: add_new_nodes: Cannot add "
-			             "node: %p to changeset. Reason: %s.\n",
-			             node->owner,
-			             knot_strerror(ret));
-		}
+		return knot_zone_diff_add_node(node, param->changeset);
+	} else {
+		return KNOT_EOK;
 	}
-
-	return ret;
 }
 
 static int knot_zone_diff_load_trees(zone_tree_t *nodes1,
@@ -429,13 +408,9 @@ int zone_contents_create_diff(const zone_contents_t *z1,
 {
 	int ret = zone_contents_diff(z1, z2, changeset);
 	if (ret != KNOT_EOK) {
-		dbg_zonediff("zone_diff: create_changesets: "
-		             "Could not diff zones. "
-		             "Reason: %s.\n", knot_strerror(ret));
 		return ret;
 	}
 
-	dbg_zonediff("Changesets created successfully!\n");
 	return KNOT_EOK;
 }
 
