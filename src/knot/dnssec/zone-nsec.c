@@ -69,39 +69,24 @@ static int delete_nsec3_chain(const zone_contents_t *zone,
 /*!
  * \brief Check if NSEC3 is enabled for given zone.
  */
-bool knot_is_nsec3_enabled(const zone_contents_t *zone)
+bool knot_is_nsec3_enabled(const zone_update_t *update)
 {
-	if (!zone) {
-		return false;
-	}
-
-	return zone->nsec3_params.algorithm != 0;
+	const zone_node_t *apex = zone_update_apex(update);
+	return node_rrtype_exists(apex, KNOT_RRTYPE_NSEC3PARAM);
 }
 
 /*!
  * \brief Get minimum TTL from zone SOA.
  * \note Value should be used for NSEC records.
  */
-static bool get_zone_soa_min_ttl(const zone_contents_t *zone,
-                                 uint32_t *ttl)
+static uint32_t const get_zone_soa_min_ttl(const zone_update_t *update)
 {
-	assert(zone);
-	assert(zone->apex);
-	assert(ttl);
+	assert(update);
 
-	zone_node_t *apex = zone->apex;
+	const zone_node_t *apex = zone_update_get_apex(update);
 	const knot_rdataset_t *soa = node_rdataset(apex, KNOT_RRTYPE_SOA);
-	if (!soa) {
-		return false;
-	}
 
-	uint32_t result =  knot_soa_minimum(soa);
-	if (result == 0) {
-		return false;
-	}
-
-	*ttl = result;
-	return true;
+	return knot_soa_minimum(soa);
 }
 
 /*!
@@ -182,7 +167,7 @@ static int mark_removed_nsec3(changeset_t *out_ch,
  */
 knot_dname_t *knot_create_nsec3_owner(const knot_dname_t *owner,
                                       const knot_dname_t *zone_apex,
-                                      const knot_nsec3_params_t *params)
+                                      const knot_rdataset_t *params)
 {
 	if (owner == NULL || zone_apex == NULL || params == NULL) {
 		return NULL;
@@ -199,12 +184,12 @@ knot_dname_t *knot_create_nsec3_owner(const knot_dname_t *owner,
 
 	dnssec_binary_t hash = { 0 };
 	dnssec_nsec3_params_t xparams = {
-		.algorithm = params->algorithm,
-		.flags = params->flags,
-		.iterations = params->iterations,
+		.algorithm = knot_nsec3param_algorithm(params, 0),
+		.flags = knot_nsec3param_flags(params, 0),
+		.iterations = knot_nsec3param_iterations(params, 0),
 		.salt = {
-			.data = params->salt,
-			.size = params->salt_length
+			.data = knot_nsec3param_salt(params, 0),
+			.size = knot_nsec3param_salt_length(params, 0)
 		}
 	};
 
@@ -266,19 +251,15 @@ knot_dname_t *knot_nsec3_hash_to_dname(const uint8_t *hash, size_t hash_size,
 /*!
  * \brief Create NSEC or NSEC3 chain in the zone.
  */
-int knot_zone_create_nsec_chain(const zone_contents_t *zone,
-                                changeset_t *changeset,
+int knot_zone_create_nsec_chain(zone_update_t *update,
                                 const zone_keyset_t *zone_keys,
                                 const kdnssec_ctx_t *dnssec_ctx)
 {
-	if (!zone || !changeset) {
+	if (!update) {
 		return KNOT_EINVAL;
 	}
 
-	uint32_t nsec_ttl = 0;
-	if (!get_zone_soa_min_ttl(zone, &nsec_ttl)) {
-		return KNOT_EINVAL;
-	}
+	const uint32_t nsec_ttl = get_zone_soa_min_ttl(update, &nsec_ttl);
 
 	int result;
 	bool nsec3_enabled = knot_is_nsec3_enabled(zone);
