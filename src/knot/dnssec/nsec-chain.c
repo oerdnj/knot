@@ -18,6 +18,7 @@
 #include <stdint.h>
 
 #include "knot/common/debug.h"
+#include "knot/updates/zone-update.h"
 #include "knot/dnssec/nsec-chain.h"
 #include "knot/dnssec/rrset-sign.h"
 #include "knot/dnssec/zone-nsec.h"
@@ -81,7 +82,7 @@ static int create_nsec_rrset(knot_rrset_t *rrset, const zone_node_t *from,
  *
  * \return Error code, KNOT_EOK if successful.
  */
-static int connect_nsec_nodes(zone_node_t *a, zone_node_t *b,
+static int connect_nsec_nodes(const zone_node_t *a, const zone_node_t *b,
                               nsec_chain_iterate_data_t *data)
 {
 	assert(a);
@@ -93,6 +94,7 @@ static int connect_nsec_nodes(zone_node_t *a, zone_node_t *b,
 	}
 
 	int ret = KNOT_EOK;
+	zone_update_t *update = data->update;
 
 	/*!
 	 * If the node has no other RRSets than NSEC (and possibly RRSIGs),
@@ -100,7 +102,7 @@ static int connect_nsec_nodes(zone_node_t *a, zone_node_t *b,
 	 */
 	if (node_rrtype_exists(b, KNOT_RRTYPE_NSEC)
 	    && knot_nsec_empty_nsec_and_rrsigs_in_node(b)) {
-		ret = knot_nsec_changeset_remove(b, data->changeset);
+		ret = knot_nsec_changeset_remove(b, update);
 		if (ret != KNOT_EOK) {
 			return ret;
 		}
@@ -139,9 +141,7 @@ static int connect_nsec_nodes(zone_node_t *a, zone_node_t *b,
 		}
 
 		dbg_dnssec_detail("NSECs not equal, replacing.\n");
-		// Mark the node so that we do not sign this NSEC
-		a->flags |= NODE_FLAGS_REMOVED_NSEC;
-		ret = knot_nsec_changeset_remove(a, data->changeset);
+		ret = knot_nsec_changeset_remove(a, update);
 		if (ret != KNOT_EOK) {
 			knot_rdataset_clear(&new_nsec.rrs, NULL);
 			return ret;
@@ -150,7 +150,7 @@ static int connect_nsec_nodes(zone_node_t *a, zone_node_t *b,
 
 	dbg_dnssec_detail("Adding new NSEC to changeset.\n");
 	// Add new NSEC to the changeset (no matter if old was removed)
-	ret = changeset_add_rrset(data->changeset, &new_nsec);
+	ret = zone_update_add(update, &new_nsec);
 	knot_rdataset_clear(&new_nsec.rrs, NULL);
 	return ret;
 }
@@ -160,34 +160,36 @@ static int connect_nsec_nodes(zone_node_t *a, zone_node_t *b,
 /*!
  * \brief Call a function for each piece of the chain formed by sorted nodes.
  */
-int knot_nsec_chain_iterate_create(zone_tree_t *nodes,
+int knot_nsec_chain_iterate_create(zone_update_t *update,
                                    chain_iterate_create_cb callback,
                                    nsec_chain_iterate_data_t *data)
 {
-	assert(nodes);
+	assert(update);
 	assert(callback);
 
-	bool sorted = true;
-	hattrie_iter_t *it = hattrie_iter_begin(nodes, sorted);
-
-	if (!it) {
-		return KNOT_ENOMEM;
+	zone_update_iter_t it;
+	const bool read_only = false;
+	int ret = zone_update_iter(&it, update, read_only);
+	if (ret != KNOT_EOK) {
+		return ret;
 	}
 
-	if (hattrie_iter_finished(it)) {
-		hattrie_iter_free(it);
-		return KNOT_EINVAL;
+	// Need non-empty zone.
+	assert(zone_update_iter_val(&it));
+
+	const zone_node_t *first = zone_update_iter_val(&it);
+	const zone_node_t *previous = first;
+	const zone_node_t *current = first;
+
+	ret = zone_update_iter_next(&it);
+	if (ret != KNOT_EOK) {
+		zone_update_iter_finish(&it);
+		return ret;
 	}
-
-	zone_node_t *first = (zone_node_t *)*hattrie_iter_val(it);
-	zone_node_t *previous = first;
-	zone_node_t *current = first;
-
-	hattrie_iter_next(it);
 
 	int result = KNOT_EOK;
-	while (!hattrie_iter_finished(it)) {
-		current = (zone_node_t *)*hattrie_iter_val(it);
+	while (zone_update_iter_val(&it) != NULL) {
+		current = zone_update_iter_val(&it);
 
 		result = callback(previous, current, data);
 		if (result == NSEC_NODE_SKIP) {
@@ -196,16 +198,28 @@ int knot_nsec_chain_iterate_create(zone_tree_t *nodes,
 		} else if (result == KNOT_EOK) {
 			previous = current;
 		} else {
-			hattrie_iter_free(it);
+			zone_update_iter_finish(&it);
 			return result;
 		}
-		hattrie_iter_next(it);
+		result = zone_update_iter_next(&it);
+		if (result != KNOT_EOK) {
+			zone_update_iter_finish(&it);
+			return ret;
+		}
 	}
 
-	hattrie_iter_free(it);
+	if (result == NSEC_NODE_SKIP) {
+		result = callback(previous, first, data);
+	} else {
+		result = callback(current, first, data);
+	}
 
-	return result == NSEC_NODE_SKIP ? callback(previous, first, data) :
-	                 callback(current, first, data);
+	if (result != KNOT_EOK) {
+		zone_update_iter_finish(&it);
+		return ret;
+	}
+
+	return zone_update_iter_finish(&it);
 }
 
 /* - API - utility functions ------------------------------------------------ */
@@ -214,9 +228,9 @@ int knot_nsec_chain_iterate_create(zone_tree_t *nodes,
  * \brief Add entry for removed NSEC to the changeset.
  */
 int knot_nsec_changeset_remove(const zone_node_t *n,
-                               changeset_t *changeset)
+                               zone_update_t *update)
 {
-	if (changeset == NULL) {
+	if (update == NULL) {
 		return KNOT_EINVAL;
 	}
 
@@ -228,7 +242,7 @@ int knot_nsec_changeset_remove(const zone_node_t *n,
 	}
 	if (!knot_rrset_empty(&nsec)) {
 		// update changeset
-		result = changeset_rem_rrset(changeset, &nsec);
+		result = zone_update_remove(update, &nsec);
 		if (result != KNOT_EOK) {
 			return result;
 		}
@@ -256,7 +270,7 @@ int knot_nsec_changeset_remove(const zone_node_t *n,
 		}
 
 		// store RRSIG
-		result = changeset_rem_rrset(changeset, &synth_rrsigs);
+		result = zone_update_remove(update, &synth_rrsigs);
 		knot_rdataset_clear(&synth_rrsigs.rrs, NULL);
 	}
 
@@ -286,15 +300,11 @@ bool knot_nsec_empty_nsec_and_rrsigs_in_node(const zone_node_t *n)
 /*!
  * \brief Create new NSEC chain, add differences from current into a changeset.
  */
-int knot_nsec_create_chain(const zone_contents_t *zone, uint32_t ttl,
-                           changeset_t *changeset)
+int knot_nsec_create_chain(zone_update_t *update, uint32_t ttl)
 {
-	assert(zone);
-	assert(zone->nodes);
-	assert(changeset);
+	assert(update);
 
-	nsec_chain_iterate_data_t data = { ttl, changeset, zone };
+	nsec_chain_iterate_data_t data = { .ttl = ttl, .update = update };
 
-	return knot_nsec_chain_iterate_create(zone->nodes,
-	                                      connect_nsec_nodes, &data);
+	return knot_nsec_chain_iterate_create(update, connect_nsec_nodes, &data);
 }
