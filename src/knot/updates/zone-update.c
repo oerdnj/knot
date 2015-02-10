@@ -320,7 +320,9 @@ static int sign_update(zone_update_t *update)
 
 int zone_update_add(zone_update_t *update, const knot_rrset_t *rrset)
 {
-	if (update->flags & UPDATE_INCREMENTAL) {
+	if (update->flags & UPDATE_WRITING_ITER) {
+		return changeset_add_rrset(&update->iteration_changes, rrset);
+	} else if (update->flags & UPDATE_INCREMENTAL) {
 		return changeset_add_rrset(&update->change, rrset);
 	} else if (update->flags & UPDATE_FULL) {
 		return zone_contents_add_rr(update->new_cont, rrset);
@@ -443,6 +445,22 @@ int zone_update_commit(zone_update_t *update)
 	return KNOT_EOK;
 }
 
+static int init_writing_iteration(zone_update_t *update)
+{
+	if (update->flags & UPDATE_WRITING_ITER) {
+		// uncommited change from last writing iteration.
+		return KNOT_EAGAIN;
+	}
+
+	int ret = changeset_init(update->write_iteration, update->zone->name);
+	if (ret != KNOT_EOK) {
+		return ret;
+	}
+
+	update->write_iteration |= UPDATE_WRITING_ITER;
+	return KNOT_EOK;
+}
+
 #define init_iter_with_tree(it, update, tree) \
 	memset(it, 0, sizeof(*it)); \
 	it->up = update; \
@@ -461,14 +479,30 @@ int zone_update_commit(zone_update_t *update)
 	} \
 	return KNOT_EOK;
 
-int zone_update_iter(zone_update_iter_t *it, zone_update_t *update)
+static int init_iter(zone_update_iter_t *it, zone_update_t *update, const bool read_only, const bool nsec3)
 {
-	init_iter_with_tree(it, update, nodes);
+	if (!read_only) {
+		int ret = init_writing_iteration(update);
+		if (ret != KNOT_EOK) {
+			return ret;
+		}
+	}
+
+	if (nsec3) {
+		init_iter_with_tree(it, update, nsec3_nodes);
+	} else {
+		init_iter_with_tree(it, update, nodes);
+	}
+}
+
+int zone_update_iter(zone_update_iter_t *it, zone_update_t *update, const bool read_only)
+{
+	return init_iter(it, update, read_only, false);
 }
 
 int zone_update_iter_nsec3(zone_update_iter_t *it, zone_update_t *update)
 {
-	init_iter_with_tree(it, update, nsec3_nodes);
+	return init_iter(it, update, read_only, true);
 }
 
 static int iter_get_added_node(zone_update_iter_t *it)
@@ -569,6 +603,61 @@ const zone_node_t *zone_update_iter_val(zone_update_iter_t *it)
 	} else {
 		return NULL;
 	}
+}
+
+static int merge_changeset_part(const changeset_t *from,
+                                int (*iter_init)(changeset_iter_t *, const changeset_t *, const bool),
+                                changeset_t *to,
+                                int (*adder)(changeset_t *, const knot_rrset_t *))
+{
+	changeset_iter_t itt;
+	const bool sorted = false;
+	int ret = iter_init(&itt, from, sorted);
+	if (ret != KNOT_EOK) {
+		return ret;
+	}
+
+	knot_rrset_t rr = changeset_iter_next(&itt);
+	while (!knot_rrset_empty(&rr)) {
+		int ret = adder(to, &rr);
+		if (ret != KNOT_EOK) {
+			changeset_iter_clear(&itt);
+			return ret;
+		}
+		rr = changeset_iter_next(&itt);
+	}
+
+	changeset_iter_clear(&itt);
+	return KNOT_EOK;
+}
+
+static int merge_changesets(const changeset_t *from, changeset_t *to)
+{
+	int ret = merge_changeset_part(from, changeset_iter_add, to, changeset_add_rrset);
+	if (ret != KNOT_EOK) {
+		return ret;
+	}
+	
+	return merge_changeset_part(from, changeset_iter_rem, to, changeset_rem_rrset);
+}
+
+int zone_update_iter_finish(zone_update_iter_t *it)
+{
+	hattrie_iter_free(it->t_it);
+	hattrie_iter_free(it->t_node);
+	if (!it->up->flags & UPDATE_WRITING_ITER) {
+		// No changes during iteration.
+		return KNOT_EOK;
+	}
+
+	// Clear the flag no matter the outcome, so that retry is possible.
+	it->up->flags &= ~UPDATE_WRITING_ITER;
+
+	// Store changes done during the iteration to actual changesets.
+	int ret = merge_changesets(&it->up->write_iteration, &it->up->changes);
+	changeset_clear(&it->up->write_iteration);
+
+	return ret;
 }
 
 int zone_update_load_contents(zone_update_t *up)

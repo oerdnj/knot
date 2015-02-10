@@ -37,6 +37,7 @@ typedef struct {
 	zone_contents_t *new_cont;
 	changeset_t change;          /*!< Changes we want to apply. */
 	mm_ctx_t mm;                  /*!< Memory context used for intermediate nodes. */
+	changeset_t iteration_changes;
 	uint8_t flags;
 } zone_update_t;
 
@@ -54,7 +55,8 @@ typedef enum {
 	UPDATE_INCREMENTAL = 1 << 1,
 	UPDATE_SIGN = 1 << 2,
 	UPDATE_DIFF = 1 << 3,
-	UPDATE_REPLACE_CNAMES = 1 << 4
+	UPDATE_REPLACE_CNAMES = 1 << 4,
+	UPDATE_WRITING_ITER = 1 << 5
 } zone_update_flags_t;
 
 /*!
@@ -95,10 +97,11 @@ int zone_update_add(zone_update_t *update, const knot_rrset_t *rrset);
 int zone_update_remove(zone_update_t *update, const knot_rrset_t *rrset);
 int zone_update_commit(zone_update_t *update);
 
-int zone_update_iter(zone_update_iter_t *it, zone_update_t *update);
+int zone_update_iter(zone_update_iter_t *it, zone_update_t *update, const bool read_only);
 int zone_update_iter_nsec3(zone_update_iter_t *it, zone_update_t *update);
 int zone_update_iter_next(zone_update_iter_t *it);
 const zone_node_t *zone_update_iter_val(zone_update_iter_t *it);
+int zone_update_iter_finish(zone_update_iter_t *it);
 int zone_update_load_contents(zone_update_t *up);
 
 /*! @} */
