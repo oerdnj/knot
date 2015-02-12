@@ -131,16 +131,15 @@ journal_t* journal_open(const char *path, size_t fslimit)
 	}
 	
 	memset(j, 0, sizeof(journal_t));
-	j->bflags = JOURNAL_DIRTY;
 	
 	/* Set file size. */
-	if (fslimit == 0)
+	if (fslimit == 0) {
 		j->fslimit = FSLIMIT_MAX;
-	else if (fslimit < FSLIMIT_MIN)
-		j->fslimit = FSLIMIT_MIN;
-	else
+	} else if (fslimit < FSLIMIT_MIN) {
+		goto fail;
+	} else {
 		j->fslimit = fslimit;
-	
+	}
 	
 	/* Copy path. */
 	j->path = strdup(path);
@@ -164,18 +163,6 @@ journal_t* journal_open(const char *path, size_t fslimit)
 fail:
 	free(j);
 	return NULL;
-}
-
-int journal_map(journal_t *journal, uint64_t id, char **dst, size_t size, bool rdonly)
-{
-	/*! todo: get rid of this */
-	return KNOT_EOK;
-}
-
-int journal_unmap(journal_t *journal, uint64_t id, void *ptr, int finalize)
-{
-	/*! todo: get rid of this */
-	return KNOT_EOK;
 }
 
 int journal_close(journal_t **j)

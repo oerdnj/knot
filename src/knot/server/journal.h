@@ -108,36 +108,6 @@ typedef struct journal
 journal_t* journal_open(const char *path, size_t fslimit);
 
 /*!
- * \brief Map journal entry for read/write.
- *
- * \warning New nodes shouldn't be created until the entry is unmapped.
- *
- * \param journal Associated journal.
- * \param id Entry identifier.
- * \param dst Will contain mapped memory.
- * \param rdonly If read only.
- *
- * \retval KNOT_EOK if successful.
- * \retval KNOT_ESPACE if entry too big.
- * \retval KNOT_ERROR on I/O error.
- */
-int journal_map(journal_t *journal, uint64_t id, char **dst, size_t size, bool rdonly);
-
-/*!
- * \brief Finalize mapped journal entry.
- *
- * \param journal Associated journal.
- * \param id Entry identifier.
- * \param ptr Mapped memory.
- * \param finalize Set to true to finalize node or False to discard it.
- *
- * \retval KNOT_EOK if successful.
- * \retval KNOT_ENOENT if the entry cannot be found.
- * \retval KNOT_ERROR on I/O error.
- */
-int journal_unmap(journal_t *journal, uint64_t id, void *ptr, int finalize);
-
-/*!
  * \brief Close journal file.
  *
  * \param journal Associated journal.
