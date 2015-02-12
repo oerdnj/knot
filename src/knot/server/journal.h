@@ -38,31 +38,6 @@
 #include "libknot/dname.h"
 
 /*!
- * \brief Journal entry flags.
- */
-typedef enum journal_flag_t {
-	JOURNAL_NULL  = 0 << 0, /*!< Invalid journal entry. */
-	JOURNAL_FREE  = 1 << 0, /*!< Free journal entry. */
-	JOURNAL_VALID = 1 << 1, /*!< Valid journal entry. */
-	JOURNAL_DIRTY = 1 << 2  /*!< Journal entry cannot be evicted. */
-} journal_flag_t;
-
-/*!
- * \brief Journal node structure.
- *
- * Each node represents journal entry and points
- * to position of the data in the permanent storage.
- */
-typedef struct journal_node
-{
-	uint64_t id;    /*!< Node ID. */
-	uint16_t flags; /*!< Node flags. */
-	uint16_t next;  /*!< UNUSED */
-	uint32_t pos;   /*!< Position in journal file. */
-	uint32_t len;   /*!< Entry data length. */
-} journal_node_t;
-
-/*!
  * \brief Journal structure.
  *
  * Journal organizes entries as nodes.
@@ -73,28 +48,11 @@ typedef struct journal_node
  */
 typedef struct journal
 {
-	namedb_t * db;          /*!< DB handler. */
-	const namedb_api_t *db_api;/*!< DB API backend. */
-	char *path;             /*!< Path to journal file. */
-	uint16_t tmark;         /*!< Transaction start mark. */
-	uint16_t max_nodes;     /*!< Number of nodes. */
-	uint16_t qhead;         /*!< Node queue head. */
-	uint16_t qtail;         /*!< Node queue tail. */
-	uint16_t bflags;        /*!< Initial flags for each written node. */
-	size_t fsize;           /*!< Journal file size. */
-	size_t fslimit;         /*!< File size limit. */
-	journal_node_t free;    /*!< Free segment. */
-	journal_node_t *nodes;  /*!< Array of nodes. */
+	namedb_t * db;              /*!< DB handler. */
+	const namedb_api_t *db_api; /*!< DB API backend. */
+	char *path;                 /*!< Path to journal file. */
+	size_t fslimit;             /*!< File size limit. */
 } journal_t;
-
-/*
- * Journal defaults and constants.
- */
-#define JOURNAL_NCOUNT 1024 /*!< Default node count. */
-//#define JOURNAL_MAGIC {'k', 'n', 'o', 't', '1', '5', '2'}
-//#define MAGIC_LENGTH 7
-/* HEADER = magic, crc, max_entries, qhead, qtail */
-//#define JOURNAL_HSIZE (MAGIC_LENGTH + sizeof(uint32_t) + sizeof(uint16_t) * 3)
 
 /*!
  * \brief Open journal.

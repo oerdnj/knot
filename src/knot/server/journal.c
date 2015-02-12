@@ -82,14 +82,12 @@ static int store_changeset(changeset_t *ch, journal_t *j)
 	
 	/* Reserve space for the journal entry. */
 	namedb_val_t val;
-	val.len = entry_size;// + sizeof(uint32_t);
+	val.len = entry_size;
 	val.data = malloc(val.len);
 	if (val.data == NULL) {
 		return KNOT_ENOMEM;
 	}
 	
-	//journal_pack_to(val.data, knot_soa_serial(&ch->soa_to->rrs));
-	//ret = serialize_and_store_chgset(ch, journal_get_ch(val.data), entry_size);
 	ret = serialize_and_store_chgset(ch, val.data, val.len);
 	if (ret != KNOT_EOK) {
 		goto end;

@@ -562,12 +562,6 @@ static int ixfrin_step(const knot_rrset_t *rr, struct ixfr_proc *proc)
 	}
 }
 
-/*! \brief Checks whether journal node limit has not been exceeded. */
-static bool journal_limit_exceeded(struct ixfr_proc *proc)
-{
-	return proc->change_count > JOURNAL_NCOUNT;
-}
-
 /*! \brief Checks whether RR belongs into zone. */
 static bool out_of_zone(const knot_rrset_t *rr, struct ixfr_proc *proc)
 {
@@ -593,11 +587,6 @@ static int process_ixfrin_packet(knot_pkt_t *pkt, struct answer_data *adata)
 	// Process RRs in the message.
 	const knot_pktsection_t *answer = knot_pkt_section(pkt, KNOT_ANSWER);
 	for (uint16_t i = 0; i < answer->count; ++i) {
-		if (journal_limit_exceeded(ixfr)) {
-			IXFRIN_LOG(LOG_WARNING, "journal is full");
-			return KNOT_NS_PROC_FAIL;
-		}
-
 		const knot_rrset_t *rr = knot_pkt_rr(answer, i);
 		if (out_of_zone(rr, ixfr)) {
 			continue;
