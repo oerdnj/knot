@@ -29,6 +29,15 @@
 /* Defines */
 #define LMDB_DIR_MODE   0770
 #define LMDB_FILE_MODE  0660
+/*! Minimum number of pages to keep clear. It's not guaranteed to actually  
+ * keep this many - it depends on the size of the last entry. 
+ * 24 is a guesstimate based on the journal test. There are 8 pages used
+ * more than the actual sum of the used pages in the stat structure. Then 
+ * we need a page or two for the mdb_drop (actual number of pages is 
+ * unknown) and then we reserve some space for last inserted entry that 
+ * may be big.*/
+#define CLEAR_PAGE_NO   24
+
 
 struct lmdb_env
 {
@@ -390,7 +399,24 @@ static int find(namedb_txn_t *txn, namedb_val_t *key, namedb_val_t *val, unsigne
 static int insert(namedb_txn_t *txn, namedb_val_t *key, namedb_val_t *val, unsigned flags)
 {
 	struct lmdb_env *env = txn->db;
-
+	
+	MDB_stat stat;
+	int ret = mdb_stat(txn->txn, env->dbi, &stat);
+	if (ret != MDB_SUCCESS) {
+		return lmdb_error_to_knot(ret);
+	}
+	
+	MDB_envinfo envinfo;
+	ret = mdb_env_info(env->env, &envinfo);
+	if (ret != MDB_SUCCESS) {
+		return lmdb_error_to_knot(ret);
+	}
+	
+	if (stat.ms_branch_pages + stat.ms_leaf_pages + stat.ms_overflow_pages
+	    + CLEAR_PAGE_NO >= (envinfo.me_mapsize / stat.ms_psize)) {
+		return KNOT_EBUSY;
+	}
+	
 	MDB_val db_key = { key->len, key->data };
 	MDB_val data = { val->len, val->data };
 
@@ -400,7 +426,7 @@ static int insert(namedb_txn_t *txn, namedb_val_t *key, namedb_val_t *val, unsig
 		mdb_flags |= MDB_RESERVE;
 	}
 
-	int ret = mdb_put(txn->txn, env->dbi, &db_key, &data, mdb_flags);
+	ret = mdb_put(txn->txn, env->dbi, &db_key, &data, mdb_flags);
 	if (ret != MDB_SUCCESS) {
 		return lmdb_error_to_knot(ret);
 	}

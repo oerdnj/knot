@@ -115,21 +115,29 @@ int zone_change_store(zone_t *zone, changeset_t *change)
 {
 	assert(zone);
 	assert(change);
-
-	conf_zone_t *conf = zone->conf;
+	
+	int ret = zone_init_journal(zone);
+	if (ret != KNOT_EOK) {
+		return ret;
+	}
 
 	pthread_mutex_lock(&zone->journal_lock);
-	int ret = journal_store_changeset(change, conf->ixfr_db, conf->ixfr_fslimit);
+	ret = journal_store_changeset(zone->journal, change);
 	if (ret == KNOT_EBUSY) {
 		log_zone_notice(zone->name, "journal is full, flushing");
 
 		/* Transaction rolled back, journal released, we may flush. */
 		ret = zone_flush_journal(zone);
 		if (ret == KNOT_EOK) {
-			ret = journal_store_changeset(change, conf->ixfr_db, conf->ixfr_fslimit);
+			ret = journal_store_changeset(zone->journal, change);
 		}
 	}
 	pthread_mutex_unlock(&zone->journal_lock);
+	
+	ret = zone_deinit_journal(zone);
+	if (ret != KNOT_EOK) {
+		return ret;
+	}
 
 	return ret;
 }
@@ -138,11 +146,14 @@ int zone_changes_store(zone_t *zone, list_t *chgs)
 {
 	assert(zone);
 	assert(chgs);
-
-	conf_zone_t *conf = zone->conf;
-
+	
+	int ret = zone_init_journal(zone);
+	if (ret != KNOT_EOK) {
+		return ret;
+	}
+	
 	pthread_mutex_lock(&zone->journal_lock);
-	int ret = journal_store_changesets(chgs, conf->ixfr_db, conf->ixfr_fslimit);
+	ret = journal_store_changesets(zone->journal, chgs);
 
 	if (ret == KNOT_EBUSY) {
 		log_zone_notice(zone->name, "journal is full, flushing");
@@ -150,10 +161,15 @@ int zone_changes_store(zone_t *zone, list_t *chgs)
 		/* Transaction rolled back, journal released, we may flush. */
 		ret = zone_flush_journal(zone);
 		if (ret == KNOT_EOK) {
-			ret = journal_store_changesets(chgs, conf->ixfr_db, conf->ixfr_fslimit);
+			ret = journal_store_changesets(zone->journal, chgs);
 		}
 	}
 	pthread_mutex_unlock(&zone->journal_lock);
+	
+	ret = zone_deinit_journal(zone);
+	if (ret != KNOT_EOK) {
+		return ret;
+	}
 
 	return ret;
 }
@@ -194,6 +210,23 @@ void zone_master_rotate(const zone_t *zone)
 	}
 
 	add_tail(master_list, HEAD(*master_list));
+}
+
+/*! \brief Synchronize zone file with journal. */
+int zone_init_journal(zone_t *zone)
+{
+	zone->journal = journal_open(zone->conf->ixfr_db, zone->conf->ixfr_fslimit);
+	if (zone->journal == NULL) {
+		return KNOT_EINVAL; /* Return EINVAL as ENOMEM us unlikely. */
+	}
+	
+	return KNOT_EOK;
+}
+
+/*! \brief Synchronize zone file with journal. */
+int zone_deinit_journal(zone_t *zone)
+{
+	return journal_close(&zone->journal);
 }
 
 int zone_flush_journal(zone_t *zone)
@@ -241,7 +274,7 @@ int zone_flush_journal(zone_t *zone)
 	/* Update zone file serial and journal. */
 	zone->zonefile_mtime = st.st_mtime;
 	zone->zonefile_serial = serial_to;
-	journal_mark_synced(zone->conf->ixfr_db);
+	journal_mark_synced(zone->journal);
 
 	/* Trim extra heap. */
 	mem_trim();

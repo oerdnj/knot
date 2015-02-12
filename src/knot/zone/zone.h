@@ -56,6 +56,7 @@ typedef struct zone
 	zone_contents_t *contents;
 	conf_zone_t *conf;
 	zone_flag_t flags;
+	journal_t *journal;
 
 	/*! \brief DDNS queue and lock. */
 	pthread_mutex_t ddns_lock;
@@ -111,6 +112,12 @@ const conf_iface_t *zone_master(const zone_t *zone);
 
 /*! \brief Rotate list of master remotes for current zone. */
 void zone_master_rotate(const zone_t *zone);
+
+/*! \brief Synchronize zone file with journal. */
+int zone_init_journal(zone_t *zone);
+
+/*! \brief Synchronize zone file with journal. */
+int zone_deinit_journal(zone_t *zone);
 
 /*! \brief Synchronize zone file with journal. */
 int zone_flush_journal(zone_t *zone);

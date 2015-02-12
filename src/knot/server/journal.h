@@ -17,35 +17,25 @@
  * \file journal.h
  *
  * \author Marek Vavrusa <marek.vavrusa@nic.cz>
+ * \author Dominik Taborsky <dominik.taborsky@nic.cz>
  *
  * \brief Journal for storing transactions on permanent storage.
  *
- * Journal stores entries on a permanent storage.
- * Each written entry is guaranteed to persist until
- * the maximum file size or node count is reached.
- * Entries are removed from the least recent.
- *
- * Journal file structure
- * <pre>
- *  uint16_t node_count
- *  uint16_t node_queue_head
- *  uint16_t node_queue_tail
- *  journal_entry_t free_segment
- *  node_count *journal_entry_t
- *  ...data...
- * </pre>
+ * We're using namedb now, which was using LMDB as a backend 
+ * at the time of writing.
  * \addtogroup utils
  * @{
  */
 
 #pragma once
 
+#include <assert.h>
 #include <stdint.h>
-#include <fcntl.h>
-#include <pthread.h>
 #include <stdbool.h>
+
 #include "knot/updates/changesets.h"
-#include "knot/zone/zone.h"
+#include "libknot/internal/namedb/namedb_lmdb.h"
+#include "libknot/dname.h"
 
 /*!
  * \brief Journal entry flags.
@@ -83,7 +73,8 @@ typedef struct journal_node
  */
 typedef struct journal
 {
-	int fd;
+	namedb_t * db;          /*!< DB handler. */
+	const namedb_api_t *db_api;/*!< DB API backend. */
 	char *path;             /*!< Path to journal file. */
 	uint16_t tmark;         /*!< Transaction start mark. */
 	uint16_t max_nodes;     /*!< Number of nodes. */
@@ -100,10 +91,10 @@ typedef struct journal
  * Journal defaults and constants.
  */
 #define JOURNAL_NCOUNT 1024 /*!< Default node count. */
-#define JOURNAL_MAGIC {'k', 'n', 'o', 't', '1', '5', '2'}
-#define MAGIC_LENGTH 7
+//#define JOURNAL_MAGIC {'k', 'n', 'o', 't', '1', '5', '2'}
+//#define MAGIC_LENGTH 7
 /* HEADER = magic, crc, max_entries, qhead, qtail */
-#define JOURNAL_HSIZE (MAGIC_LENGTH + sizeof(uint32_t) + sizeof(uint16_t) * 3)
+//#define JOURNAL_HSIZE (MAGIC_LENGTH + sizeof(uint32_t) + sizeof(uint16_t) * 3)
 
 /*!
  * \brief Open journal.
@@ -154,7 +145,7 @@ int journal_unmap(journal_t *journal, uint64_t id, void *ptr, int finalize);
  * \retval KNOT_EOK on success.
  * \retval KNOT_EINVAL on invalid parameter.
  */
-int journal_close(journal_t *journal);
+int journal_close(journal_t **journal);
 
 /*!
  * \brief Check if the journal file is used or not.
@@ -177,8 +168,8 @@ bool journal_exists(const char *path);
  * \retval KNOT_ERANGE if given entry was not found.
  * \return < KNOT_EOK on error.
  */
-int journal_load_changesets(const struct zone *zone, list_t *dst,
-                            uint32_t from, uint32_t to);
+int journal_load_changesets(journal_t *journal, knot_dname_t *zone_name, 
+                            list_t *dst, uint32_t from, uint32_t to);
 
 /*!
  * \brief Store changesets in journal.
@@ -191,8 +182,8 @@ int journal_load_changesets(const struct zone *zone, list_t *dst,
  * \retval KNOT_EBUSY when journal is full.
  * \return < KNOT_EOK on other errors.
  */
-int journal_store_changesets(list_t *src, const char *path, size_t size_limit);
-int journal_store_changeset(changeset_t *change, const char *path, size_t size_limit);
+int journal_store_changesets(journal_t *journal, list_t *src);
+int journal_store_changeset(journal_t *journal, changeset_t *change);
 
 /*! \brief Function for unmarking dirty nodes. */
 /*!
@@ -201,6 +192,7 @@ int journal_store_changeset(changeset_t *change, const char *path, size_t size_l
  * \retval KNOT_ENOMEM if journal could not be opened.
  * \retval KNOT_EOK on success.
  */
-int journal_mark_synced(const char *path);
+int journal_mark_synced(journal_t *journal);
 
 /*! @} */
+

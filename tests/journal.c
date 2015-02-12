@@ -23,6 +23,7 @@
 #include <tap/basic.h>
 
 #include "knot/server/journal.h"
+#include "knot/zone/zone.h"
 #include "knot/zone/zone-diff.h"
 
 #define RAND_RR_LABEL 16
@@ -196,33 +197,35 @@ static void test_fillup(journal_t *journal, size_t fsize, unsigned iter, size_t 
 	free(large_entry);
 
 	/* Check file size. */
-	struct stat st;
-	fstat(journal->fd, &st);
-	ok(st.st_size < fsize + chunk_size, "journal: fillup / size check #%u", iter);
-	if (st.st_size > fsize + chunk_size) {
-		diag("journal: fillup / size check #%u fsize(%zu) > max(%zu)",
-		     iter, (size_t)st.st_size, fsize + chunk_size);
-	}
+	/*! todo: journal/namedb does not support this. */
+	//struct stat st;
+	//fstat(journal->fd, &st);
+	//ok(st.st_size < fsize + chunk_size, "journal: fillup / size check #%u", iter);
+	//if (st.st_size > fsize + chunk_size) {
+		//diag("journal: fillup / size check #%u fsize(%zu) > max(%zu)",
+		     //iter, (size_t)st.st_size, fsize + chunk_size);
+	//}
 }
 
 /*! \brief Test behavior with real changesets. */
-static void test_store_load(const char *jfilename)
+static void test_store_load(char *jfilename)
 {
-	const size_t filesize = 100 * 1024;
+	const size_t filesize = 1 * 1024 * 1024;
+	journal_t *j = journal_open(jfilename, filesize);
 	uint8_t *apex = (uint8_t *)"\4test";
 
 	/* Create fake zone. */
-	conf_zone_t zconf = { .ixfr_db = (char *)jfilename, .ixfr_fslimit = filesize };
+	conf_zone_t zconf;// = { .ixfr_fslimit = filesize };
 	zone_t z = { .name = apex, .conf = &zconf };
 
 	/* Save and load changeset. */
 	changeset_t ch;
 	init_random_changeset(&ch, 0, 1, 128, apex);
-	int ret = journal_store_changeset(&ch, jfilename, filesize);
+	int ret = journal_store_changeset(j, &ch);
 	ok(ret == KNOT_EOK, "journal: store changeset");
 	list_t l;
 	init_list(&l);
-	ret = journal_load_changesets(&z, &l, 0, 1);
+	ret = journal_load_changesets(j, z.name, &l, 0, 1);
 	ok(ret == KNOT_EOK && changesets_eq(TAIL(l), &ch), "journal: load changeset");
 	changeset_clear(&ch);
 	changesets_free(&l);
@@ -233,51 +236,62 @@ static void test_store_load(const char *jfilename)
 	uint32_t serial = 1;
 	for (; ret == KNOT_EOK; ++serial) {
 		init_random_changeset(&ch, serial, serial + 1, 128, apex);
-		ret = journal_store_changeset(&ch, jfilename, filesize);
+		ret = journal_store_changeset(j, &ch);
 		changeset_clear(&ch);
 	}
-	ok(ret == KNOT_EBUSY, "journal: overfill with changesets");
+	ok(ret == KNOT_EBUSY, "journal: overfill with changesets (%d inserted)", serial);
+
+	//journal_close(&j);
+	//j = journal_open(jfilename, filesize);
 
 	/* Load all changesets stored until now. */
 	serial--;
-	ret = journal_load_changesets(&z, &l, 0, serial);
+	ret = journal_load_changesets(j, z.name, &l, 0, serial);
 	changesets_free(&l);
 	ok(ret == KNOT_EOK, "journal: load changesets");
 
 	/* Flush the journal. */
-	ret = journal_mark_synced(jfilename);
+	ret = journal_mark_synced(j);
 	ok(ret == KNOT_EOK, "journal: flush");
-
+	
+	//journal_close(&j);
+	//j = journal_open(jfilename, filesize);
+	
 	/* Store next changeset. */
 	init_random_changeset(&ch, serial, serial + 1, 128, apex);
-	ret = journal_store_changeset(&ch, jfilename, filesize);
+	ret = journal_store_changeset(j, &ch);
 		changeset_clear(&ch);
 	ok(ret == KNOT_EOK, "journal: store after flush");
 
-	/* Load all changesets, except the first one that got evicted. */
+	/* Load last changesets. */
 	init_list(&l);
-	ret = journal_load_changesets(&z, &l, 1, serial + 1);
+	ret = journal_load_changesets(j, z.name, &l, serial, serial + 1);
 	changesets_free(&l);
 	ok(ret == KNOT_EOK, "journal: load changesets after flush");
+	
+	journal_close(&j);
 }
 
 /*! \brief Test behavior when writing to jurnal and flushing it. */
-static void test_stress(const char *jfilename)
+static void test_stress(char * jfilename)
 {
 	uint8_t *apex = (uint8_t *)"\4test";
-	const size_t filesize = 100 * 1024;
+	const size_t filesize = 1 * 1024 * 1024;
+	journal_t *j = journal_open(jfilename, filesize);
 	int ret = KNOT_EOK;
 	uint32_t serial = 0;
-	size_t update_size = 3;
-	for (; ret == KNOT_EOK && serial < 32; ++serial) {
+	size_t update_size = 2000;
+	for (; ret == KNOT_EOK && serial < 250; ++serial) {
 		changeset_t ch;
 		init_random_changeset(&ch, serial, serial + 1, update_size, apex);
 		update_size *= 1.5;
-		ret = journal_store_changeset(&ch, jfilename, filesize);
+		ret = journal_store_changeset(j, &ch);
 		changeset_clear(&ch);
-		journal_mark_synced(jfilename);
+		journal_mark_synced(j);
 	}
-	ok(ret == KNOT_ESPACE, "journal: does not overfill under load");
+	ok(ret == KNOT_EBUSY, "journal: does not overfill under load");
+	
+	journal_close(&j);
 }
 
 int main(int argc, char *argv[])
@@ -291,27 +305,32 @@ int main(int argc, char *argv[])
 	snprintf(jfilename, sizeof(jfilename), "%s/%s", tmpdir, "journal.XXXXXX");
 
 	/* Create tmpfile. */
-	int tmp_fd = mkstemp(jfilename);
-	ok(tmp_fd >= 0, "journal: create temporary file");
-	if (tmp_fd < 0) {
-		goto skip_all;
-	}
-	close(tmp_fd);
-	remove(jfilename);
+	//int tmp_fd = mkstemp(jfilename);
+	//ok(tmp_fd >= 0, "journal: create temporary file");
+	//if (tmp_fd < 0) {
+		//goto skip_all;
+	//}
+	//close(tmp_fd);
+	//remove(jfilename);
+	
+	/* Create tmpdir */
+	mkdtemp(jfilename);
+	ok(errno == 0, "make temporary directory '%s'", jfilename);
 
 	/* Try to open journal with too small fsize. */
-	journal_t *journal = journal_open(jfilename, 1024);
-	ok(journal == NULL, "journal: open too small");
+	/* NOT SUPPORTED */
+	//journal_t *journal = journal_open(jfilename, 1024);
+	//ok(journal == NULL, "journal: open too small");
 
 	/* Open/create new journal. */
-	journal = journal_open(jfilename, fsize);
+	journal_t *journal = journal_open(jfilename, fsize);
 	ok(journal != NULL, "journal: open journal '%s'", jfilename);
 	if (journal == NULL) {
 		goto skip_all;
 	}
 
 	/* Write entry and check integrity. */
-	char *mptr = NULL;
+	/*char *mptr = NULL;
 	uint64_t chk_key = 0;
 	char chk_buf[64] = {'\0'};
 	randstr(chk_buf, sizeof(chk_buf));
@@ -321,20 +340,20 @@ int main(int argc, char *argv[])
 		memcpy(mptr, chk_buf, sizeof(chk_buf));
 		ret = journal_unmap(journal, chk_key, mptr, 1);
 		is_int(KNOT_EOK, ret, "journal: write data (unmap)");
-	}
+	}*/
 
-	ret = journal_map(journal, chk_key, &mptr, sizeof(chk_buf), true);
+	/*ret = journal_map(journal, chk_key, &mptr, sizeof(chk_buf), true);
 	is_int(KNOT_EOK, ret, "journal: data integrity check (map)");
 	if (ret == KNOT_EOK) {
 		ret = memcmp(chk_buf, mptr, sizeof(chk_buf));
 		is_int(0, ret, "journal: data integrity check (cmp)");
 		ret = journal_unmap(journal, chk_key, mptr, 0);
 		is_int(KNOT_EOK, ret, "journal: data integrity check (unmap)");
-	}
+	}*/
 
 	/* Reopen log and re-read value. */
-	journal_close(journal);
-	journal = journal_open(jfilename, fsize);
+	//journal_close(journal);
+	/*journal = journal_open(jfilename, fsize);
 	ok(journal != NULL, "journal: open journal '%s'", jfilename);
 
 	ret = journal_map(journal, chk_key, &mptr, sizeof(chk_buf), true);
@@ -343,9 +362,9 @@ int main(int argc, char *argv[])
 		journal_unmap(journal, chk_key, mptr, 0);
 	}
 	is_int(KNOT_EOK, ret, "journal: data integrity check after close/open");
-
+	*/
 	/*  Write random data. */
-	ret = KNOT_EOK;
+	/*ret = KNOT_EOK;
 	for (int i = 0; i < 512; ++i) {
 		chk_key = 0xDEAD0000 + i;
 		ret = journal_map(journal, chk_key, &mptr, sizeof(chk_buf), false);
@@ -360,36 +379,40 @@ int main(int argc, char *argv[])
 		}
 	}
 	is_int(KNOT_EOK, ret, "journal: sustained mmap r/w");
-
+	*/
 	/* Overfill (yields ESPACE/EBUSY) */
-	ret = journal_map(journal, chk_key, &mptr, fsize, false);
+	/*ret = journal_map(journal, chk_key, &mptr, fsize, false);
 	ok(ret != KNOT_EOK, "journal: overfill");
-
+	*/
 	/* Fillup */
-	size_t sizes[] = {16, 64, 1024, 4096, 512 * 1024, 1024 * 1024 };
+	/*size_t sizes[] = {16, 64, 1024, 4096, 512 * 1024, 1024 * 1024 };
 	const int num_sizes = sizeof(sizes)/sizeof(size_t);
 	for (unsigned i = 0; i < 2 * num_sizes; ++i) {
 		/* Journal flush. */
-		journal_close(journal);
+		/*journal_close(journal);
 		ret = journal_mark_synced(jfilename);
 		is_int(KNOT_EOK, ret, "journal: flush after fillup #%u", i);
 		journal = journal_open(jfilename, fsize);
 		ok(journal != NULL, "journal: reopen after flush #%u", i);
 		/* Journal fillup. */
-		test_fillup(journal, fsize, i, sizes[i % num_sizes]);
+		/*test_fillup(journal, fsize, i, sizes[i % num_sizes]);
 	}
-
+	*/
+	
 	/* Close journal. */
-	journal_close(journal);
+	journal_close(&journal);
 
 	/* Delete journal. */
-	remove(jfilename);
+	//remove(jfilename);
+	//char cmd[256];
+	//snprintf(cmd, sizeof(cmd), "rm -rf %s", jfilename);
+	//system(cmd);
 
 	test_store_load(jfilename);
-	remove(jfilename);
+	//system(cmd);
 
 	test_stress(jfilename);
-	remove(jfilename);
+	//system(cmd);
 
 	free(tmpdir);
 

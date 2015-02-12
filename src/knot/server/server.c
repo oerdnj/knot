@@ -20,6 +20,7 @@
 #include <sys/stat.h>
 #include <errno.h>
 #include <assert.h>
+#include <fcntl.h>
 
 #include "dnssec/random.h"
 #include "knot/common/debug.h"

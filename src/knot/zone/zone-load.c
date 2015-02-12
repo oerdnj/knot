@@ -98,9 +98,19 @@ int zone_load_journal(zone_t *zone, zone_contents_t *contents)
 	list_t chgs;
 	init_list(&chgs);
 
+	int ret = zone_init_journal(zone);
+	if (ret != KNOT_EOK) {
+		return ret;
+	}
+
 	pthread_mutex_lock(&zone->journal_lock);
-	int ret = journal_load_changesets(zone, &chgs, serial, serial - 1);
+	ret = journal_load_changesets(zone->journal, zone->name, &chgs, serial, serial - 1);
 	pthread_mutex_unlock(&zone->journal_lock);
+
+	ret = zone_deinit_journal(zone);
+	if (ret != KNOT_EOK) {
+		return ret;
+	}
 
 	if ((ret != KNOT_EOK && ret != KNOT_ERANGE) || EMPTY_LIST(chgs)) {
 		changesets_free(&chgs);

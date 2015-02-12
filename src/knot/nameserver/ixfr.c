@@ -176,17 +176,29 @@ static int ixfr_load_chsets(list_t *chgsets, zone_t *zone,
 	if (ret <= 0) { /* We have older/same age zone. */
 		return KNOT_EUPTODATE;
 	}
-
+	
+	ret = zone_init_journal(zone);
+	if (ret != KNOT_EOK) {
+		return ret;
+	}
+	
 	pthread_mutex_lock(&zone->journal_lock);
-	ret = journal_load_changesets(zone, chgsets, serial_from, serial_to);
+	ret = journal_load_changesets(zone->journal, zone->name, chgsets, 
+	                              serial_from, serial_to);
 	pthread_mutex_unlock(&zone->journal_lock);
-
+	
+	ret = zone_deinit_journal(zone);
+	if (ret != KNOT_EOK) {
+		return ret;
+	}
+	
 	if (ret != KNOT_EOK) {
 		changesets_free(chgsets);
 	}
 
 	return ret;
 }
+
 
 /*! \brief Check IXFR query validity. */
 static int ixfr_query_check(struct query_data *qdata)
