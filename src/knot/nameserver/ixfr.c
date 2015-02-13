@@ -183,8 +183,7 @@ static int ixfr_load_chsets(list_t *chgsets, zone_t *zone,
 	}
 	
 	pthread_mutex_lock(&zone->journal_lock);
-	ret = journal_load_changesets(zone->journal, zone->name, chgsets, 
-	                              serial_from, serial_to);
+	ret = journal_load_changesets(zone->journal, zone->name, chgsets, serial_from);
 	pthread_mutex_unlock(&zone->journal_lock);
 	
 	ret = zone_deinit_journal(zone);

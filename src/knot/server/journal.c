@@ -191,7 +191,7 @@ bool journal_exists(const char *path)
 }
 
 int journal_load_changesets(journal_t *j, knot_dname_t *zone_name, 
-                            list_t *dst, uint32_t from, uint32_t to)
+                            list_t *dst, uint32_t from)
 {
 	if (!j || !zone_name || !dst) {
 		return KNOT_EINVAL;

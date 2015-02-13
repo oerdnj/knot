@@ -97,7 +97,7 @@ bool journal_exists(const char *path);
  * \return < KNOT_EOK on error.
  */
 int journal_load_changesets(journal_t *journal, knot_dname_t *zone_name, 
-                            list_t *dst, uint32_t from, uint32_t to);
+                            list_t *dst, uint32_t from);
 
 /*!
  * \brief Store changesets in journal.
