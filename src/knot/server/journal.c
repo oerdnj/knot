@@ -22,6 +22,26 @@
 #include "knot/server/serialization.h"
 #include "libknot/internal/macros.h"
 
+/* On the topic of FSLIMIT_MAX:
+ * According to my 'research', it is best to overshoot so that the size 
+ * of the DB is never a concern. This is actually from the mouth of 
+ * Howard Chu, the creator of LMDB. We should also realize LMDB works by 
+ * memory-mapping files, thus most of the work is done by the kernel.
+ * Kernel decides what pages are in memory and which are not and 
+ * implmements lazy access. All of the file will most likely never make 
+ * it to memory all at once. 
+ * 
+ * 32-bit systems are not considered.
+ * */
+
+/* On the topic of JOURNAL_DROP_FLUSH:
+ * Again, according to Mr. Chu himself, mdb_drop is only slightly faster 
+ * than deleting every record individually, yet may postpone freeing 
+ * pages. Thus, deleting the records in batches over several commits may 
+ * result in better page management. But this is open for questioning 
+ * and testing.
+ * */
+
 /*! \brief Infinite file size limit. */
 #define FSLIMIT_MAX (100 * 1024 * 1024 * (size_t) 1024)
 /*! \brief Minimum journal size. */
@@ -30,21 +50,6 @@
 #define SYNC_BATCH 100
 /*! \brief Define for mdb_drop call, not define for a batch removal. */
 #define JOURNAL_DROP_FLUSH
-
-static inline void journal_pack_to(uint8_t * data, uint32_t to)
-{
-	*((uint32_t *) data) = to;
-}
-
-static inline uint32_t journal_unpack_to(uint8_t * data)
-{
-	return *((uint32_t *) data);
-}
-
-static inline char * journal_get_ch(char * data)
-{
-	return data + sizeof(uint32_t);
-}
 
 static int load_changeset(journal_t *journal, namedb_val_t *val, knot_dname_t *zone_name, list_t *chgs)
 {
@@ -218,8 +223,10 @@ int journal_load_changesets(journal_t *j, knot_dname_t *zone_name,
 	
 	/* Note: keys made of <from><to> are not necessary. We never use 
 	 * the <to> part in the key. We use the <to> part to look up next 
-	 * changeset using it as another <from> part. We now have the <to> 
-	 * part moved from the key side to the value side. 
+	 * changeset using it as another <from> part. Now, to take advantage
+	 * of LMDB guaranteeing contigous memory for the data, we unpack 
+	 * the changesets early and then use their own record of the 'to'
+	 * serial. 
 	 */
 	
 	ret = j->db_api->find(&txn, &key, &val, 0);
