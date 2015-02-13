@@ -159,7 +159,7 @@ static void test_store_load(char *jfilename)
 	ok(ret == KNOT_EOK, "journal: store changeset");
 	list_t l;
 	init_list(&l);
-	ret = journal_load_changesets(j, z.name, &l, 0, 1);
+	ret = journal_load_changesets(j, z.name, &l, 0);
 	ok(ret == KNOT_EOK && changesets_eq(TAIL(l), &ch), "journal: load changeset");
 	changeset_clear(&ch);
 	changesets_free(&l);
@@ -177,7 +177,7 @@ static void test_store_load(char *jfilename)
 
 	/* Load all changesets stored until now. */
 	serial--;
-	ret = journal_load_changesets(j, z.name, &l, 0, serial);
+	ret = journal_load_changesets(j, z.name, &l, 0);
 	changesets_free(&l);
 	ok(ret == KNOT_EOK, "journal: load changesets");
 
@@ -193,7 +193,7 @@ static void test_store_load(char *jfilename)
 
 	/* Load last changesets. */
 	init_list(&l);
-	ret = journal_load_changesets(j, z.name, &l, serial, serial + 1);
+	ret = journal_load_changesets(j, z.name, &l, serial);
 	changesets_free(&l);
 	ok(ret == KNOT_EOK, "journal: load changesets after flush");
 	
