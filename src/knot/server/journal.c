@@ -119,12 +119,11 @@ end:
 
 journal_t* journal_open(const char *path, size_t fslimit)
 {
-	if (path == NULL) {
-		return NULL;
-	}
+	assert(path);
 	
 	journal_t *j = malloc(sizeof(*j));
 	if (j == NULL) {
+		errno = KNOT_ENOMEM;
 		return NULL;
 	}
 	
@@ -134,7 +133,7 @@ journal_t* journal_open(const char *path, size_t fslimit)
 	if (fslimit == 0) {
 		j->fslimit = FSLIMIT_MAX;
 	} else if (fslimit < FSLIMIT_MIN) {
-		goto fail;
+		j->fslimit = FSLIMIT_MIN;
 	} else {
 		j->fslimit = fslimit;
 	}
@@ -142,6 +141,7 @@ journal_t* journal_open(const char *path, size_t fslimit)
 	/* Copy path. */
 	j->path = strdup(path);
 	if (j->path == NULL) {
+		errno = KNOT_ENOMEM;
 		goto fail;
 	}
 	
@@ -152,6 +152,7 @@ journal_t* journal_open(const char *path, size_t fslimit)
 	/* Init DB. */
 	int ret = j->db_api->init(&j->db, NULL, &opts);
 	if (ret != KNOT_EOK) {
+		errno = ret;
 		free(j->path);
 		goto fail;
 	}
