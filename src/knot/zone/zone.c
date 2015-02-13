@@ -115,21 +115,20 @@ int zone_change_store(zone_t *zone, changeset_t *change)
 {
 	assert(zone);
 	assert(change);
-	
 	int ret = zone_init_journal(zone);
 	if (ret != KNOT_EOK) {
 		return ret;
 	}
 
 	pthread_mutex_lock(&zone->journal_lock);
-	ret = journal_store_changeset(zone->journal, change);
+	int ret2 = journal_store_changeset(zone->journal, change);
 	if (ret == KNOT_EBUSY) {
 		log_zone_notice(zone->name, "journal is full, flushing");
 
 		/* Transaction rolled back, journal released, we may flush. */
 		ret = zone_flush_journal(zone);
 		if (ret == KNOT_EOK) {
-			ret = journal_store_changeset(zone->journal, change);
+			ret2 = journal_store_changeset(zone->journal, change);
 		}
 	}
 	pthread_mutex_unlock(&zone->journal_lock);
@@ -139,7 +138,7 @@ int zone_change_store(zone_t *zone, changeset_t *change)
 		return ret;
 	}
 
-	return ret;
+	return ret2;
 }
 
 int zone_changes_store(zone_t *zone, list_t *chgs)
@@ -153,7 +152,7 @@ int zone_changes_store(zone_t *zone, list_t *chgs)
 	}
 	
 	pthread_mutex_lock(&zone->journal_lock);
-	ret = journal_store_changesets(zone->journal, chgs);
+	int ret2 = journal_store_changesets(zone->journal, chgs);
 
 	if (ret == KNOT_EBUSY) {
 		log_zone_notice(zone->name, "journal is full, flushing");
@@ -161,7 +160,7 @@ int zone_changes_store(zone_t *zone, list_t *chgs)
 		/* Transaction rolled back, journal released, we may flush. */
 		ret = zone_flush_journal(zone);
 		if (ret == KNOT_EOK) {
-			ret = journal_store_changesets(zone->journal, chgs);
+			ret2 = journal_store_changesets(zone->journal, chgs);
 		}
 	}
 	pthread_mutex_unlock(&zone->journal_lock);
@@ -171,7 +170,7 @@ int zone_changes_store(zone_t *zone, list_t *chgs)
 		return ret;
 	}
 
-	return ret;
+	return ret2;
 }
 
 zone_contents_t *zone_switch_contents(zone_t *zone, zone_contents_t *new_contents)
@@ -217,7 +216,7 @@ int zone_init_journal(zone_t *zone)
 {
 	zone->journal = journal_open(zone->conf->ixfr_db, zone->conf->ixfr_fslimit);
 	if (zone->journal == NULL) {
-		return KNOT_EINVAL; /* Return EINVAL as ENOMEM us unlikely. */
+		return errno;
 	}
 	
 	return KNOT_EOK;

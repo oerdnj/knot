@@ -104,7 +104,7 @@ int zone_load_journal(zone_t *zone, zone_contents_t *contents)
 	}
 
 	pthread_mutex_lock(&zone->journal_lock);
-	ret = journal_load_changesets(zone->journal, zone->name, &chgs, serial);
+	int ret2 = journal_load_changesets(zone->journal, zone->name, &chgs, serial);
 	pthread_mutex_unlock(&zone->journal_lock);
 
 	ret = zone_deinit_journal(zone);
@@ -112,13 +112,13 @@ int zone_load_journal(zone_t *zone, zone_contents_t *contents)
 		return ret;
 	}
 
-	if ((ret != KNOT_EOK && ret != KNOT_ERANGE) || EMPTY_LIST(chgs)) {
+	if ((ret2 != KNOT_EOK && ret2 != KNOT_ERANGE) || EMPTY_LIST(chgs)) {
 		changesets_free(&chgs);
 		/* Absence of records is not an error. */
-		if (ret == KNOT_ENOENT) {
+		if (ret2 == KNOT_ENOENT) {
 			return KNOT_EOK;
 		} else {
-			return ret;
+			return ret2;
 		}
 	}
 
@@ -130,7 +130,7 @@ int zone_load_journal(zone_t *zone, zone_contents_t *contents)
 
 	updates_cleanup(&chgs);
 	changesets_free(&chgs);
-	return ret;
+	return ret2;
 }
 
 int zone_load_post(zone_contents_t *contents, zone_t *zone, uint32_t *dnssec_refresh)

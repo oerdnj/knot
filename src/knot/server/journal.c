@@ -238,8 +238,8 @@ int journal_load_changesets(journal_t *j, knot_dname_t *zone_name,
 		ret = j->db_api->find(&txn, &key, &val, 0);
 	}
 	
-	/* It's okay, we just found none of that key. */
-	if (ret == KNOT_ENOENT) {
+	/* It's okay, we just found none of the next key. */
+	if (!EMPTY_LIST(*dst) && ret == KNOT_ENOENT) {
 		ret = KNOT_EOK;
 	}
 	
