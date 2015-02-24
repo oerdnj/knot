@@ -121,24 +121,24 @@ int zone_change_store(zone_t *zone, changeset_t *change)
 	}
 
 	pthread_mutex_lock(&zone->journal_lock);
-	int ret2 = journal_store_changeset(zone->journal, change);
+	ret = journal_store_changeset(zone->journal, change);
 	if (ret == KNOT_EBUSY) {
 		log_zone_notice(zone->name, "journal is full, flushing");
 
 		/* Transaction rolled back, journal released, we may flush. */
 		ret = zone_flush_journal(zone);
 		if (ret == KNOT_EOK) {
-			ret2 = journal_store_changeset(zone->journal, change);
+			ret = journal_store_changeset(zone->journal, change);
 		}
 	}
 	pthread_mutex_unlock(&zone->journal_lock);
 	
-	ret = zone_deinit_journal(zone);
 	if (ret != KNOT_EOK) {
+		zone_deinit_journal(zone);
 		return ret;
 	}
-
-	return ret2;
+	
+	return zone_deinit_journal(zone);
 }
 
 int zone_changes_store(zone_t *zone, list_t *chgs)
@@ -152,25 +152,24 @@ int zone_changes_store(zone_t *zone, list_t *chgs)
 	}
 	
 	pthread_mutex_lock(&zone->journal_lock);
-	int ret2 = journal_store_changesets(zone->journal, chgs);
-
+	ret = journal_store_changesets(zone->journal, chgs);
 	if (ret == KNOT_EBUSY) {
 		log_zone_notice(zone->name, "journal is full, flushing");
 
 		/* Transaction rolled back, journal released, we may flush. */
 		ret = zone_flush_journal(zone);
 		if (ret == KNOT_EOK) {
-			ret2 = journal_store_changesets(zone->journal, chgs);
+			ret = journal_store_changesets(zone->journal, chgs);
 		}
 	}
 	pthread_mutex_unlock(&zone->journal_lock);
 	
-	ret = zone_deinit_journal(zone);
 	if (ret != KNOT_EOK) {
+		zone_deinit_journal(zone);
 		return ret;
 	}
-
-	return ret2;
+	
+	return zone_deinit_journal(zone);
 }
 
 zone_contents_t *zone_switch_contents(zone_t *zone, zone_contents_t *new_contents)

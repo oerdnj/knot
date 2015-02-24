@@ -97,29 +97,30 @@ int zone_load_journal(zone_t *zone, zone_contents_t *contents)
 	/*! \todo Check what should be the upper bound. */
 	list_t chgs;
 	init_list(&chgs);
-
+	
 	int ret = zone_init_journal(zone);
 	if (ret != KNOT_EOK) {
 		return ret;
 	}
 
 	pthread_mutex_lock(&zone->journal_lock);
-	int ret2 = journal_load_changesets(zone->journal, zone->name, &chgs, serial);
+	ret = journal_load_changesets(zone->journal, zone->name, &chgs, serial);
 	pthread_mutex_unlock(&zone->journal_lock);
+
+	if ((ret != KNOT_EOK && ret != KNOT_ERANGE) || EMPTY_LIST(chgs)) {
+		changesets_free(&chgs);
+		/* Absence of records is not an error. */
+		if (ret == KNOT_ENOENT) {
+			return zone_deinit_journal(zone);
+		} else {
+			zone_deinit_journal(zone);
+			return ret;
+		}
+	}
 
 	ret = zone_deinit_journal(zone);
 	if (ret != KNOT_EOK) {
 		return ret;
-	}
-
-	if ((ret2 != KNOT_EOK && ret2 != KNOT_ERANGE) || EMPTY_LIST(chgs)) {
-		changesets_free(&chgs);
-		/* Absence of records is not an error. */
-		if (ret2 == KNOT_ENOENT) {
-			return KNOT_EOK;
-		} else {
-			return ret2;
-		}
 	}
 
 	/* Apply changesets. */
@@ -130,7 +131,7 @@ int zone_load_journal(zone_t *zone, zone_contents_t *contents)
 
 	updates_cleanup(&chgs);
 	changesets_free(&chgs);
-	return ret2;
+	return ret;
 }
 
 int zone_load_post(zone_contents_t *contents, zone_t *zone, uint32_t *dnssec_refresh)

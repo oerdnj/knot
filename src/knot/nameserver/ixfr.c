@@ -183,19 +183,16 @@ static int ixfr_load_chsets(list_t *chgsets, zone_t *zone,
 	}
 	
 	pthread_mutex_lock(&zone->journal_lock);
-	int ret2 = journal_load_changesets(zone->journal, zone->name, chgsets, serial_from);
+	ret = journal_load_changesets(zone->journal, zone->name, chgsets, serial_from);
 	pthread_mutex_unlock(&zone->journal_lock);
 	
-	ret = zone_deinit_journal(zone);
 	if (ret != KNOT_EOK) {
+		changesets_free(chgsets);
+		zone_deinit_journal(zone);
 		return ret;
 	}
-	
-	if (ret2 != KNOT_EOK) {
-		changesets_free(chgsets);
-	}
 
-	return ret2;
+	return zone_deinit_journal(zone);
 }
 
 

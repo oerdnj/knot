@@ -22,34 +22,23 @@
 #include "knot/server/serialization.h"
 #include "libknot/internal/macros.h"
 
-/* On the topic of FSLIMIT_MAX:
- * According to my 'research', it is best to overshoot so that the size 
- * of the DB is never a concern. This is actually from the mouth of 
- * Howard Chu, the creator of LMDB. We should also realize LMDB works by 
- * memory-mapping files, thus most of the work is done by the kernel.
- * Kernel decides what pages are in memory and which are not and 
- * implmements lazy access. All of the file will most likely never make 
- * it to memory all at once. 
- * 
- * 32-bit systems are not considered.
- * */
+
 
 /* On the topic of JOURNAL_DROP_FLUSH:
- * Again, according to Mr. Chu himself, mdb_drop is only slightly faster 
- * than deleting every record individually, yet may postpone freeing 
- * pages. Thus, deleting the records in batches over several commits may 
- * result in better page management. But this is open for questioning 
- * and testing.
+ * mdb_drop is only slightly faster than deleting every record 
+ * individually, yet may postpone freeing pages. Thus, deleting the 
+ * records in batches over several commits may result in better page 
+ * management. 
  * */
 
 /*! \brief Infinite file size limit. */
-#define FSLIMIT_MAX (100 * 1024 * 1024 * (size_t) 1024)
+#define FSLIMIT_MAX (2 * 1024 * 1024 * (size_t) 1024)
 /*! \brief Minimum journal size. */
 #define FSLIMIT_MIN (1 * 1024 * 1024)
 /*! \brief How many deletes per transaction do we perform. */
 #define SYNC_BATCH 100
-/*! \brief Define for mdb_drop call, not define for a batch removal. */
-#define JOURNAL_DROP_FLUSH
+/*! \brief Define 1 for batch removal, 0 for mdb_drop call. */
+#define JOURNAL_BATCH_FLUSH 1
 
 static int load_changeset(journal_t *journal, namedb_val_t *val, knot_dname_t *zone_name, list_t *chgs)
 {
@@ -58,7 +47,8 @@ static int load_changeset(journal_t *journal, namedb_val_t *val, knot_dname_t *z
 		return KNOT_ENOMEM;
 	}
 
-	/* Read journal entry. */
+	/* Read journal entry. 
+	 * LMDB guarantees contiguous memory. */
 	int ret = changeset_unpack_from(ch, val->data, val->len);
 	if (ret != KNOT_EOK) {
 		return ret;
@@ -151,7 +141,6 @@ journal_t* journal_open(const char *path, size_t fslimit)
 	}
 	
 	j->db_api = namedb_lmdb_api();
-	
 	struct namedb_lmdb_opts opts = { .path = path, .mapsize = j->fslimit };
 	
 	/* Init DB. */
@@ -166,6 +155,7 @@ journal_t* journal_open(const char *path, size_t fslimit)
 	
 fail:
 	free(j);
+	
 	return NULL;
 }
 
@@ -219,15 +209,6 @@ int journal_load_changesets(journal_t *j, knot_dname_t *zone_name,
 	*((uint32_t *) key.data) = from;
 	
 	namedb_val_t val;
-	
-	
-	/* Note: keys made of <from><to> are not necessary. We never use 
-	 * the <to> part in the key. We use the <to> part to look up next 
-	 * changeset using it as another <from> part. Now, to take advantage
-	 * of LMDB guaranteeing contigous memory for the data, we unpack 
-	 * the changesets early and then use their own record of the 'to'
-	 * serial. 
-	 */
 	
 	ret = j->db_api->find(&txn, &key, &val, 0);
 	if (ret != KNOT_EOK) {
@@ -297,11 +278,11 @@ int journal_mark_synced(journal_t *j)
 		return KNOT_EINVAL;
 	}
 	
-#ifdef JOURNAL_DROP_FLUSH
-	int ret;
-#else	
+#if JOURNAL_BATCH_FLUSH
 	int ret, count, i;
 	namedb_iter_t *iter;
+#else	
+	int ret;
 #endif
 	
 	namedb_txn_t txn;
@@ -311,14 +292,14 @@ int journal_mark_synced(journal_t *j)
 	}
 	
 	
-#ifdef JOURNAL_DROP_FLUSH
+#if JOURNAL_BATCH_FLUSH
+	count = j->db_api->count(&txn);
+#else
 	ret = j->db_api->clear(&txn);
 	if (ret != KNOT_EOK) {
 		j->db_api->txn_abort(&txn);
 		return ret;
 	}
-#else
-	count = j->db_api->count(&txn);
 #endif
 
 	ret = j->db_api->txn_commit(&txn);
@@ -327,9 +308,7 @@ int journal_mark_synced(journal_t *j)
 		return ret;
 	}
 
-#ifdef JOURNAL_DROP_FLUSH
-	return KNOT_EOK;
-#else
+#if JOURNAL_BATCH_FLUSH
 	namedb_val_t key;
 	
 	while (count > 0) {
@@ -374,8 +353,8 @@ int journal_mark_synced(journal_t *j)
 		}
 	}
 	
-	return KNOT_EOK;
 #endif
+	return KNOT_EOK;
 }
 
 

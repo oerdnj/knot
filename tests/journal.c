@@ -237,9 +237,14 @@ int main(int argc, char *argv[])
 	ok(errno == 0, "make temporary directory '%s'", jfilename);
 
 	/* Try to open journal with too small fsize. */
-	/* NOT SUPPORTED */
 	journal_t *journal = journal_open(jfilename, 1024);
-	ok(journal == NULL, "journal: open too small");
+	ok(journal != NULL && journal->fslimit >= 1024, "journal: open too small");
+	journal_close(&journal);
+	
+	/* Try to open journal with unlimited fsize. */
+	journal = journal_open(jfilename, 0);
+	ok(journal != NULL, "journal: open unlimited");
+	journal_close(&journal);
 
 	/* Open/create new journal. */
 	journal = journal_open(jfilename, fsize);
