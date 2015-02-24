@@ -208,7 +208,7 @@ static void test_stress(char * jfilename)
 	journal_t *j = journal_open(jfilename, filesize);
 	int ret = KNOT_EOK;
 	uint32_t serial = 0;
-	size_t update_size = 2000;
+	size_t update_size = 4;
 	for (; ret == KNOT_EOK && serial < 250; ++serial) {
 		changeset_t ch;
 		init_random_changeset(&ch, serial, serial + 1, update_size, apex);
@@ -218,6 +218,23 @@ static void test_stress(char * jfilename)
 		journal_mark_synced(j);
 	}
 	ok(ret == KNOT_EBUSY, "journal: does not overfill under load");
+	
+	update_size /= 6;
+	ret = KNOT_EOK;
+	for (; ret == KNOT_EOK && serial < 250; ++serial) {
+		changeset_t ch;
+		init_random_changeset(&ch, serial, serial + 1, update_size, apex);
+		ret = journal_store_changeset(j, &ch);
+		changeset_clear(&ch);
+	}
+	
+	journal_mark_synced(j);
+	
+	changeset_t ch;
+	init_random_changeset(&ch, serial, serial + 1, 128, apex);
+	ret = journal_store_changeset(j, &ch);
+	changeset_clear(&ch);
+	ok(ret == KNOT_EOK, "journal: keeps working after fillup.");
 	
 	journal_close(&j);
 }
@@ -234,7 +251,7 @@ int main(int argc, char *argv[])
 	
 	/* Create tmpdir */
 	mkdtemp(jfilename);
-	ok(errno == 0, "make temporary directory '%s'", jfilename);
+	ok(errno == 0 || errno == EEXIST, "make temporary directory '%s'", jfilename);
 
 	/* Try to open journal with too small fsize. */
 	journal_t *journal = journal_open(jfilename, 1024);
@@ -252,22 +269,18 @@ int main(int argc, char *argv[])
 	if (journal == NULL) {
 		goto skip_all;
 	}
-
-	
 	
 	/* Close journal. */
 	journal_close(&journal);
 
-	/* Delete journal. */
-	//char cmd[256];
-	//snprintf(cmd, sizeof(cmd), "rm -rf %s", jfilename);
-	//system(cmd);
-
 	test_store_load(jfilename);
-	//system(cmd);
 
 	test_stress(jfilename);
-	//system(cmd);
+	
+	/* Delete journal. */
+	char cmd[256];
+	snprintf(cmd, sizeof(cmd), "rm -rf %s", jfilename);
+	system(cmd);
 
 	free(tmpdir);
 
