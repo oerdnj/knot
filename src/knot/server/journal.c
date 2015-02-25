@@ -38,7 +38,7 @@
 /*! \brief How many deletes per transaction do we perform. */
 #define SYNC_BATCH 100
 /*! \brief Define 1 for batch removal, 0 for mdb_drop call. */
-#define JOURNAL_BATCH_FLUSH 0
+#define JOURNAL_BATCH_FLUSH 1
 
 static int load_changeset(journal_t *journal, namedb_val_t *val, knot_dname_t *zone_name, list_t *chgs)
 {
