@@ -86,7 +86,7 @@ int zone_load_check(zone_contents_t *contents, conf_zone_t *zone_config)
 int zone_load_journal(zone_t *zone, zone_contents_t *contents)
 {
 	/* Check if journal is used and zone is not empty. */
-	if (!journal_exists(zone->conf->ixfr_db) ||
+	if (zone->conf->ixfr_db != NULL ||
 	    zone_contents_is_empty(contents)) {
 		return KNOT_EOK;
 	}

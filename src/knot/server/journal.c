@@ -179,13 +179,6 @@ int journal_close(journal_t **j)
 	return KNOT_EOK;
 }
 
-bool journal_exists(const char *path)
-{
-	UNUSED(path);
-	
-	return true;
-}
-
 int journal_load_changesets(journal_t *j, knot_dname_t *zone_name, 
                             list_t *dst, uint32_t from)
 {

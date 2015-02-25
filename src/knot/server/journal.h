@@ -76,15 +76,6 @@ journal_t* journal_open(const char *path, size_t fslimit);
 int journal_close(journal_t **journal);
 
 /*!
- * \brief Check if the journal file is used or not.
- *
- * \param path Journal file.
- *
- * \return true or false
- */
-bool journal_exists(const char *path);
-
-/*!
  * \brief Load changesets from journal.
  *
  * \param path Path to journal file.
