@@ -32,7 +32,7 @@
  * */
 
 /*! \brief Infinite file size limit. */
-#define FSLIMIT_MAX (2 * 1024 * 1024 * (size_t) 1024)
+#define FSLIMIT_MAX (1 * 1024 * 1024 * (size_t) 1024)
 /*! \brief Minimum journal size. */
 #define FSLIMIT_MIN (1 * 1024 * 1024)
 /*! \brief How many deletes per transaction do we perform. */
