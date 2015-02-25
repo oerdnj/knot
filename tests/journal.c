@@ -25,6 +25,7 @@
 #include "knot/server/journal.h"
 #include "knot/zone/zone.h"
 #include "knot/zone/zone-diff.h"
+#include "libknot/rrtype/soa.h"
 
 #define RAND_RR_LABEL 16
 #define RAND_RR_PAYLOAD 64
@@ -141,6 +142,27 @@ static bool changesets_eq(const changeset_t *ch1, changeset_t *ch2)
 	return ret;
 }
 
+/*! \brief Test a list of changesets for continuity. */
+static bool test_continuity(list_t *l)
+{
+	node_t *n = NULL;
+	uint32_t key1, key2;
+	WALK_LIST(n, *l) {
+		if (n == TAIL(*l)) {
+			break;
+		}
+		changeset_t *ch1 = (changeset_t *) n;
+		changeset_t *ch2 = (changeset_t *) n->next;
+		key1 = knot_soa_serial(&ch1->soa_to->rrs);
+		key2 = knot_soa_serial(&ch2->soa_from->rrs);
+		if (key1 != key2) {
+			return KNOT_EINVAL;
+		}
+	}
+	
+	return KNOT_EOK;
+}
+
 /*! \brief Test behavior with real changesets. */
 static void test_store_load(char *jfilename)
 {
@@ -196,6 +218,37 @@ static void test_store_load(char *jfilename)
 	ret = journal_load_changesets(j, z.name, &l, serial);
 	changesets_free(&l);
 	ok(ret == KNOT_EOK, "journal: load changesets after flush");
+	
+	/* Flush the journal again. */
+	ret = journal_mark_synced(j);
+	ok(ret == KNOT_EOK, "journal: flush again");
+
+	/* Fill the journal using a list. */
+	ret = KNOT_EOK;
+	uint32_t m_serial = 1;
+	changeset_t *m_ch;
+	for (; m_serial < serial / 2; ++m_serial) {
+		m_ch = changeset_new(apex);
+		init_random_changeset(m_ch, m_serial, m_serial + 1, 128, apex);
+		add_tail(&l, &m_ch->n);
+	}
+	ret = journal_store_changesets(j, &l);
+	ok(ret == KNOT_EOK, "journal: fill with changesets using a list (%d inserted)", m_serial);
+	
+	/* Cleanup. */
+	changesets_free(&l);
+	init_list(&l);
+	
+	/* Load all previous changesets. */
+	ret = journal_load_changesets(j, z.name, &l, 1);
+	ok(knot_soa_serial(&((changeset_t *)TAIL(l))->soa_to->rrs) == m_serial, "journal: load all changesets");
+	
+	/* Check for changeset ordering. */
+	ok(test_continuity(&l) == KNOT_EOK, "journal: changesets are in order");
+	
+	/* Cleanup. */
+	changesets_free(&l);
+	init_list(&l);
 	
 	journal_close(&j);
 }
