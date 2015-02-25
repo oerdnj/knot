@@ -250,8 +250,8 @@ int main(int argc, char *argv[])
 	snprintf(jfilename, sizeof(jfilename), "%s/%s", tmpdir, "journal.XXXXXX");
 	
 	/* Create tmpdir */
-	mkdtemp(jfilename);
-	ok(errno == 0 || errno == EEXIST, "make temporary directory '%s'", jfilename);
+	char * res = mkdtemp(jfilename);
+	ok(res != NULL, "make temporary directory '%s'", jfilename);
 
 	/* Try to open journal with too small fsize. */
 	journal_t *journal = journal_open(jfilename, 1024);
