@@ -19,7 +19,7 @@
 #include "knot/modules/rosedb.h"
 #include "knot/nameserver/process_query.h"
 #include "libknot/rrtype/rdname.h"
-#include "libknot/dnssec/random.h"
+#include "dnssec/random.h"
 #include "libknot/rrset-dump.h"
 #include "libknot/internal/utils.h"
 
@@ -399,7 +399,7 @@ static int rosedb_log_message(char *stream, size_t *maxlen, knot_pkt_t *pkt,
 	 */
 	const knot_pktsection_t *ans = knot_pkt_section(pkt, KNOT_ANSWER);
 	if (ans->count > 0) {
-		const knot_rrset_t *rr = &ans->rr[knot_random_uint16_t() % ans->count];
+		const knot_rrset_t *rr = knot_pkt_rr(ans, dnssec_random_uint16_t() % ans->count);
 		int ret = knot_rrset_txt_dump_data(rr, 0, stream, *maxlen, &KNOT_DUMP_STYLE_DEFAULT);
 		if (ret < 0) {
 			return ret;
@@ -419,8 +419,8 @@ static int rosedb_log_message(char *stream, size_t *maxlen, knot_pkt_t *pkt,
 
 	/* Field 19 First authority. */
 	const knot_pktsection_t *ns = knot_pkt_section(pkt, KNOT_AUTHORITY);
-	if (ns->count > 0 && ns->rr[0].type == KNOT_RRTYPE_NS) {
-		const knot_dname_t *label = knot_ns_name(&ns->rr[0].rrs, 0);
+	if (ns->count > 0 && knot_pkt_rr(ns, 0)->type == KNOT_RRTYPE_NS) {
+		const knot_dname_t *label = knot_ns_name(&knot_pkt_rr(ns, 0)->rrs, 0);
 		memset(dname_buf, 0, sizeof(dname_buf));
 		memcpy(dname_buf, label + 1, *label);
 		STREAM_WRITE(stream, maxlen, snprintf, "%s", dname_buf);
@@ -498,7 +498,7 @@ static int rosedb_synth(knot_pkt_t *pkt, const knot_dname_t *key, struct iter *i
 
 	/* Authority section. */
 	knot_pkt_begin(pkt, KNOT_AUTHORITY);
-	
+
 	/* Not found (zone cut if records exist). */
 	ret = cache_iter_begin(it, key);
 	while (ret == KNOT_EOK) {
@@ -564,7 +564,7 @@ static int rosedb_query_txn(MDB_txn *txn, MDB_dbi dbi, knot_pkt_t *pkt, struct q
 static int rosedb_query(int state, knot_pkt_t *pkt, struct query_data *qdata, void *ctx)
 {
 	if (pkt == NULL || qdata == NULL || ctx == NULL) {
-		return KNOT_NS_PROC_FAIL;
+		return KNOT_STATE_FAIL;
 	}
 
 	struct cache *cache = ctx;
@@ -583,7 +583,7 @@ static int rosedb_query(int state, knot_pkt_t *pkt, struct query_data *qdata, vo
 
 	mdb_txn_abort(txn);
 
-	return KNOT_NS_PROC_DONE;
+	return KNOT_STATE_DONE;
 }
 
 int rosedb_load(struct query_plan *plan, struct query_module *self)
@@ -591,7 +591,7 @@ int rosedb_load(struct query_plan *plan, struct query_module *self)
 	if (self == NULL || plan == NULL) {
 		return KNOT_EINVAL;
 	}
-	
+
 	struct cache *cache = cache_open(self->param, 0, self->mm);
 	if (cache == NULL) {
 		MODULE_ERR("couldn't open db '%s'", self->param);
@@ -612,4 +612,3 @@ int rosedb_unload(struct query_module *self)
 	cache_close(self->ctx);
 	return KNOT_EOK;
 }
-

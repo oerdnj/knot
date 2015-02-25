@@ -28,11 +28,13 @@ int main(int argc, char *argv[])
 
 	knsupdate_params_t params;
 	if (knsupdate_parse(&params, argc, argv) == KNOT_EOK) {
-		dnssec_crypto_init();
-		if (!params.stop && knsupdate_exec(&params) != KNOT_EOK) {
-			ret = EXIT_FAILURE;
+		if (!params.stop) {
+			dnssec_crypto_init();
+			if (knsupdate_exec(&params) != KNOT_EOK) {
+				ret = EXIT_FAILURE;
+			}
+			dnssec_crypto_cleanup();
 		}
-		dnssec_crypto_cleanup();
 	} else {
 		ret = EXIT_FAILURE;
 	}

@@ -36,6 +36,7 @@ LT_INIT
 m4_ifdef([PKG_INSTALLDIR], [PKG_INSTALLDIR], [AC_SUBST([pkgconfigdir], ['${libdir}/pkgconfig'])])
 AC_CONFIG_FILES([src/libknot.pc
 		 src/libknot-int.pc
+		 src/libknot-yparser.pc
 		 src/dnssec/libdnssec.pc])
 
 # Build Knot DNS daemon
@@ -59,10 +60,15 @@ AM_CONDITIONAL([HAVE_DOCS], [test "$enable_documentation" = "yes"])
 
 AC_PROG_INSTALL
 
-# Set zone parser type
 AC_ARG_ENABLE([fastparser],
-    AS_HELP_STRING([--disable-fastparser], [Use slower zone parser]),
-    [], [enable_fastparser=yes])
+    AS_HELP_STRING([--disable-fastparser], [Disable use of fastest zone parser]),[],[
+    # Set zone parser type - fastest on release build, slowest on dev build
+    AS_IF([test -d ".git" -o "$PATCH_VERSION" = "dev"],[
+        enable_fastparser=no
+    	],[
+    	enable_fastparser=yes
+    	])
+    ])
 AM_CONDITIONAL([FAST_PARSER], [test "$enable_fastparser" = "yes"])
 
 # GnuTLS crypto backend
@@ -259,12 +265,11 @@ AS_IF([test "$with_urcu" != "no"], [
 
     AS_IF([test "$with_urcu" = "no"],[
       AC_MSG_ERROR([liburcu is required])
-      ],[
       ])
   ])
 ])
 
-AC_SEARCH_LIBS([urcu_init], [urcu], [AC_MSG_ERROR([liburcu is too old (< 0.4.0), urcu_init symbol found])], [])
+AC_SEARCH_LIBS([urcu_init], [urcu], [AC_MSG_ERROR([liburcu is too old (< 0.4.0), urcu_init symbol found])])
 ])
 
 opt_dnstap=no
@@ -282,7 +287,8 @@ AM_CONDITIONAL([HAVE_DNSTAP], test "$opt_dnstap" != "no")
 dnl Check for LMDB
 AC_ARG_WITH([lmdb],
     AC_HELP_STRING([--with-lmdb=[DIR]], [Link with external LMDB]),[
-    with_lmdb=$withval,
+    with_lmdb=$withval
+    ],[
     with_lmdb=yes
     ])
 
@@ -330,15 +336,14 @@ AM_CONDITIONAL([HAVE_LMDB], test "$have_lmdb" != "no")
 
 AS_IF([test "$enable_daemon" = "yes"],[
 
-dnl Check for rosedb module 
+dnl Check for rosedb module
 AC_ARG_ENABLE([rosedb],
-    AS_HELP_STRING([--disable-rosedb], [Do not enable static RR query module.]),
+    AS_HELP_STRING([--enable-rosedb], [Enable static RR query module.]),
     [], [enable_rosedb=no])
 ]) # Knot DNS daemon dependencies
 
 AS_IF([test "$enable_rosedb" = yes], [AC_DEFINE([HAVE_ROSEDB], [1], [Define to 1 to enable static RR query module.])])
 AM_CONDITIONAL([HAVE_ROSEDB], [test "$enable_rosedb" = yes])
-
 
 ############################################
 # Dependencies needed for Knot DNS utilities
@@ -444,7 +449,6 @@ AC_CONFIG_FILES([Makefile
 		 man/knsupdate.1
 		 man/knot.conf.5
 		 ])
-
 
 AC_OUTPUT
 

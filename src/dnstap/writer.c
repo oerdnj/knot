@@ -19,7 +19,7 @@
 #include <stdlib.h>                     // calloc, free
 #include <string.h>                     // strdup
 
-#include "libknot/errcode.h"
+#include "libknot/libknot.h"
 
 #include "dnstap/dnstap.h"
 #include "dnstap/writer.h"
@@ -30,7 +30,7 @@ dt_writer_t* dt_writer_create(const char *file_path, const char *version)
 	struct fstrm_writer_options *wopt = NULL;
 	dt_writer_t *writer = NULL;
 	fstrm_res res;
-	
+
 	writer = calloc(1, sizeof(dt_writer_t));
 	if (writer == NULL) {
 		goto fail;

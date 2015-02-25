@@ -14,6 +14,7 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include "libknot/libknot.h"
 #include "knot/common/log.h"
 #include "knot/server/journal.h"
 #include "knot/zone/zone-diff.h"
@@ -211,4 +212,3 @@ bool zone_load_can_bootstrap(const conf_zone_t *zone_config)
 {
 	return zone_config && !EMPTY_LIST(zone_config->acl.xfr_in);
 }
-

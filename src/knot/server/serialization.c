@@ -17,7 +17,7 @@
 #include <assert.h>
 
 #include "knot/server/serialization.h"
-#include "libknot/errcode.h"
+#include "libknot/libknot.h"
 
 static size_t rr_binary_size(const knot_rrset_t *rrset, size_t rdata_pos)
 {
@@ -138,7 +138,7 @@ int rrset_deserialize(const uint8_t *stream, size_t *stream_size,
 	    rrset == NULL) {
 		return KNOT_EINVAL;
 	}
-	
+
 	if (sizeof(uint64_t) > *stream_size) {
 		return KNOT_ESPACE;
 	}
@@ -190,4 +190,3 @@ int rrset_deserialize(const uint8_t *stream, size_t *stream_size,
 
 	return KNOT_EOK;
 }
-

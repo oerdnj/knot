@@ -14,29 +14,35 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include <stdarg.h>
+#include <stdio.h>
 #include <stdlib.h>
+#if HAVE_LMDB
+#include <lmdb.h>
+#endif
 
-#include "libknot/internal/errors.h"
+#include "libknot/internal/errcode.h"
+#include "libknot/internal/macros.h"
 
-static const error_table_t *lookup_error(const error_table_t *table, int id)
+_public_
+int knot_map_errno_internal(int fallback, int arg0, ...)
 {
-	while (table->name != NULL) {
-		if (table->id == id) {
-			return table;
+	/* Iterate all variable-length arguments. */
+	va_list ap;
+	va_start(ap, arg0);
+
+	/* KNOT_ERROR serves as a sentinel. */
+	for (int c = arg0; c != 0; c = va_arg(ap, int)) {
+
+		/* Error code matches with mapped. */
+		if (c == errno) {
+			/* Return negative value of the code. */
+			va_end(ap);
+			return -abs(c);
 		}
-		table++;
 	}
+	va_end(ap);
 
-	return NULL;
-}
-
-const char *error_to_str(const error_table_t *table, int id)
-{
-	const error_table_t *msg = lookup_error(table, id);
-
-	if (msg != NULL) {
-		return msg->name;
-	} else {
-		return "Unknown error.";
-	}
+	/* Fallback error code. */
+	return KNOT_ERROR;
 }

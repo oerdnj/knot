@@ -23,6 +23,7 @@
 #include <fcntl.h>
 
 #include "dnssec/random.h"
+#include "libknot/libknot.h"
 #include "knot/common/debug.h"
 #include "knot/common/trim.h"
 #include "knot/server/server.h"
@@ -105,7 +106,16 @@ static int server_init_iface(iface_t *new_if, conf_iface_t *cfg_if)
 	sockaddr_tostr(addr_str, sizeof(addr_str), &cfg_if->addr);
 
 	/* Create bound UDP socket. */
-	int sock = net_bound_socket(SOCK_DGRAM, &cfg_if->addr);
+	int bind_flags = 0;
+	int sock = net_bound_socket(SOCK_DGRAM, &cfg_if->addr, bind_flags);
+	if (sock == KNOT_EADDRNOTAVAIL) {
+		bind_flags |= NET_BIND_NONLOCAL;
+		sock = net_bound_socket(SOCK_DGRAM, &cfg_if->addr, bind_flags);
+		if (sock >= 0) {
+			log_warning("address '%s' is not available", addr_str);
+		}
+	}
+
 	if (sock < 0) {
 		log_error("cannot bind address '%s' (%s)", addr_str, knot_strerror(sock));
 		return sock;
@@ -117,7 +127,7 @@ static int server_init_iface(iface_t *new_if, conf_iface_t *cfg_if)
 	new_if->fd[IO_UDP] = sock;
 
 	/* Create bound TCP socket. */
-	sock = net_bound_socket(SOCK_STREAM, &cfg_if->addr);
+	sock = net_bound_socket(SOCK_STREAM, &cfg_if->addr, bind_flags);
 	if (sock < 0) {
 		close(new_if->fd[IO_UDP]);
 		return sock;

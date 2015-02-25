@@ -517,4 +517,3 @@ void changeset_iter_clear(changeset_iter_t *it)
 		it->node_pos = 0;
 	}
 }
-

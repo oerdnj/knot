@@ -29,6 +29,7 @@
 #include "libknot/internal/strlcpy.h"
 #include "libknot/internal/mem.h"
 #include "libknot/internal/macros.h"
+#include "libknot/libknot.h"
 #include "knot/conf/conf.h"
 #include "knot/conf/extra.h"
 #include "knot/ctl/remote.h"
@@ -902,7 +903,6 @@ int conf_bg_threads(const conf_t *conf)
 
 	return conf->bg_workers;
 }
-
 
 void conf_init_zone(conf_zone_t *zone)
 {

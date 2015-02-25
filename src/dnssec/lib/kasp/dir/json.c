@@ -175,7 +175,7 @@ int decode_uint32(const json_t *value, void *result)
 		return r;
 	}
 
-	uint16_t *uint32_ptr = result;
+	uint32_t *uint32_ptr = result;
 	*uint32_ptr = decoded;
 
 	return DNSSEC_EOK;
@@ -222,8 +222,14 @@ int encode_binary(const void *value, json_t **result)
 		return r;
 	}
 
-	//! \todo replace json_pack with json_stringn (not in Jansson 2.6 yet)
-	json_t *encoded = json_pack("s#", base64.data, base64.size);
+#if JANSSON_VERSION_HEX >= 0x020500
+	json_t *encoded = json_pack("s#", base64.data, (int)base64.size);
+#else
+	char tmp[base64.size + 1];
+	memcpy(tmp, base64.data, base64.size);
+	tmp[base64.size] = '\0';
+	json_t *encoded = json_pack("s", tmp);
+#endif
 	if (!encoded) {
 		return DNSSEC_ENOMEM;
 	}

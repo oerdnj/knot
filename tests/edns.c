@@ -17,7 +17,7 @@
 #include <tap/basic.h>
 
 #include <assert.h>
-#include "libknot/errcode.h"
+#include "libknot/libknot.h"
 #include "libknot/rrtype/opt.h"
 #include "libknot/descriptor.h"
 #include "libknot/internal/sockaddr.h"
@@ -303,7 +303,6 @@ static bool test_setters(knot_rrset_t *opt_rr, int *done)
 	   knot_strerror(ret));
 	(*done)++;
 
-
 	knot_rdata_t *rdata = knot_rdataset_at(&opt_rr->rrs, 0);
 	if (rdata == NULL) {
 		skip_block(2, "No RDATA in OPT RR.");
@@ -340,7 +339,6 @@ static void test_client_subnet()
 	uint8_t  src_mask, dst_mask;
 	uint8_t  data[KNOT_EDNS_MAX_OPTION_CLIENT_SUBNET] = { 0 };
 	uint16_t data_len = sizeof(data);
-
 
 	/* Create IPv4 subnet - src mask 32  */
 	family = KNOT_ADDR_FAMILY_IPV4;

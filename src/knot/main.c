@@ -31,6 +31,7 @@
 #endif
 
 #include "dnssec/crypto.h"
+#include "libknot/libknot.h"
 #include "knot/ctl/process.h"
 #include "knot/ctl/remote.h"
 #include "knot/conf/conf.h"
@@ -294,7 +295,6 @@ int main(int argc, char **argv)
 	conf_add_hook(config, CONF_ALL, server_reconfigure, &server);
 	log_info("configured %zu interfaces and %zu zones",
 	         list_size(&config->ifaces), hattrie_weight(config->zones));
-
 
 	/* Alter privileges. */
 	log_update_privileges(config->uid, config->gid);

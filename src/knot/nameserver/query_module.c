@@ -1,12 +1,12 @@
 #include "knot/nameserver/query_module.h"
 #include "libknot/internal/mempattern.h"
-#include "libknot/errcode.h"
+#include "libknot/libknot.h"
 #include "libknot/internal/strlcpy.h"
 
 /* Compiled-in module headers. */
 #include "knot/modules/synth_record.h"
 #include "knot/modules/dnsproxy.h"
-#ifdef HAVE_ROSEDB 
+#ifdef HAVE_ROSEDB
 #include "knot/modules/rosedb.h"
 #endif
 #if USE_DNSTAP

@@ -3,6 +3,7 @@
 
 #include "knot/modules/rosedb.c"
 #include "zscanner/scanner.h"
+#include "libknot/libknot.h"
 #include "libknot/internal/mem.h"
 #include "libknot/internal/getline.h"
 
@@ -105,14 +106,14 @@ int main(int argc, char *argv[])
 			break;
 		}
 	}
-	
+
 	cache_close(cache);
 	zs_scanner_free(g_scanner);
 
 	if (!found) {
 		return help();
 	}
-	
+
 	return ret;
 }
 
