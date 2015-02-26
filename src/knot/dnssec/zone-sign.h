@@ -29,6 +29,7 @@
 #pragma once
 
 #include "knot/updates/zone-update.h"
+#include "knot/updates/zone-read.h"
 #include "knot/zone/contents.h"
 #include "knot/dnssec/context.h"
 #include "knot/dnssec/zone-keys.h"
@@ -61,9 +62,15 @@ int knot_zone_sign(zone_update_t *update,
  *
  * \return True if zone SOA signatures need update, false othewise.
  */
-bool knot_zone_sign_soa_expired(const zone_read_t *zr,
+bool knot_zone_sign_soa_expired(zone_update_t *update,
                                 const zone_keyset_t *zone_keys,
                                 const kdnssec_ctx_t *dnssec_ctx);
+
+int knot_zone_sign_update_soa(const knot_rrset_t *soa,
+                              const knot_rrset_t *rrsigs,
+                              const zone_keyset_t *zone_keys,
+                              const kdnssec_ctx_t *dnssec_ctx,
+                              zone_update_t *update);
 
 /*!
  * \brief Sign changeset created by DDNS or zone-diff.
@@ -92,8 +99,7 @@ int knot_zone_sign_changeset(zone_update_t *update,
  *
  * \return KNOT_E*
  */
-int knot_zone_sign_rr_should_be_signed(const zone_node_t *node,
-                                       const knot_rrset_t *rrset,
-                                       bool *should_sign);
+bool knot_zone_sign_rr_should_be_signed(const zone_node_t *node,
+                                        const knot_rrset_t *rrset);
 
 /*! @} */
