@@ -32,7 +32,7 @@
  * */
 
 /*! \brief Infinite file size limit. */
-#define FSLIMIT_MAX (1 * 1024 * 1024 * (size_t) 1024)
+#define FSLIMIT_DEFAULT (1 * 1024 * 1024 * (size_t) 1024)
 /*! \brief Minimum journal size. */
 #define FSLIMIT_MIN (1 * 1024 * 1024)
 /*! \brief How many deletes per transaction do we perform. */
@@ -126,7 +126,7 @@ journal_t* journal_open(const char *path, size_t fslimit)
 	
 	/* Set file size. */
 	if (fslimit == 0) {
-		j->fslimit = FSLIMIT_MAX;
+		j->fslimit = FSLIMIT_DEFAULT;
 	} else if (fslimit < FSLIMIT_MIN) {
 		j->fslimit = FSLIMIT_MIN;
 	} else {
