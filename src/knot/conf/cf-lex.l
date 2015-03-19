@@ -178,9 +178,9 @@ all {
 increment|unixtime {
   lval.t = yytext;
   if (strcmp(yytext, "increment") == 0) {
-    lval.i = CONF_SERIAL_INCREMENT;
+    lval.t = "increment";
   } else {
-    lval.i = CONF_SERIAL_UNIXTIME;
+    lval.t = "unixtime";
   }
   return SERIAL_POLICY_VAL;
 }
@@ -272,37 +272,12 @@ include BEGIN(include);
   cf_error(yyscanner, "Invalid IPv6 address.");
 }
 
-[0][x]{HEXA}+ {
-  lval.t = NULL;
-  lval.l = 0;
-  yytext = yytext + 2; /* Cut off 0x */
-  size_t dlen = strlen(yytext);
-  if (dlen % 2 == 1) {
-    cf_error(yyscanner, "Invalid hex-string length.");
-  } else {
-    dlen = dlen / 2;
-    lval.t = malloc((dlen) * sizeof(char));
-    if (lval.t == NULL) {
-      cf_error(yyscanner, "Out of memory when allocating hex-string.\n");
-    } else {
-       memset(lval.t, 0, dlen);
-       if (hex2bin(yytext, lval.t, dlen) < 0) {
-         cf_error(yyscanner, "Failed to convert hex-string to binary.\n");
-       } else {
-         lval.l = dlen;
-       }
-    }
-  }
-
-  return HEXSTR;
-}
-
-hmac-md5        { lval.alg = DNSSEC_TSIG_HMAC_MD5;    return TSIG_ALGO_NAME; }
-hmac-sha1       { lval.alg = DNSSEC_TSIG_HMAC_SHA1;   return TSIG_ALGO_NAME; }
-hmac-sha224     { lval.alg = DNSSEC_TSIG_HMAC_SHA224; return TSIG_ALGO_NAME; }
-hmac-sha256     { lval.alg = DNSSEC_TSIG_HMAC_SHA256; return TSIG_ALGO_NAME; }
-hmac-sha384     { lval.alg = DNSSEC_TSIG_HMAC_SHA384; return TSIG_ALGO_NAME; }
-hmac-sha512     { lval.alg = DNSSEC_TSIG_HMAC_SHA512; return TSIG_ALGO_NAME; }
+hmac-md5        { lval.t = strdup(yytext); return TSIG_ALGO_NAME; }
+hmac-sha1       { lval.t = strdup(yytext); return TSIG_ALGO_NAME; }
+hmac-sha224     { lval.t = strdup(yytext); return TSIG_ALGO_NAME; }
+hmac-sha256     { lval.t = strdup(yytext); return TSIG_ALGO_NAME; }
+hmac-sha384     { lval.t = strdup(yytext); return TSIG_ALGO_NAME; }
+hmac-sha512     { lval.t = strdup(yytext); return TSIG_ALGO_NAME; }
 
 ["][^"\n]*["] {
   yytext[yyleng-1] = 0;

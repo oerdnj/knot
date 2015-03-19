@@ -57,64 +57,8 @@ extern void cf_lex_destroy(void *scanner);
 extern void switch_input(const char *str, void *scanner);
 
 conf_t *new_config = NULL; /*!< \brief Currently parsed config. */
-static volatile int _parser_res = 0; /*!< \brief Parser result. */
+extern volatile int _parser_res;
 static pthread_mutex_t _parser_lock = PTHREAD_MUTEX_INITIALIZER;
-
-static void cf_print_error(void *scanner, int priority, const char *msg)
-{
-	conf_extra_t *extra = NULL;
-	int lineno = -1;
-	char *text = "?";
-	char *filename = NULL;
-	conf_include_t *inc = NULL;
-
-	if (scanner) {
-		extra = cf_get_extra(scanner);
-		lineno = cf_get_lineno(scanner);
-		inc = conf_includes_top(extra->includes);
-		extra->error = true;
-	}
-
-	if (extra && lineno != 0) {
-		text = cf_get_text(scanner);
-	}
-
-	if (inc && inc->filename) {
-		filename = inc->filename;
-	} else {
-		filename = new_config->filename;
-	}
-
-	log_msg(priority, "config, file '%s', line %d, token '%s', %s",
-	        filename, lineno, text, msg);
-}
-
-/*! \brief Config error report. */
-void cf_error(void *scanner, const char *format, ...)
-{
-	char buffer[ERROR_BUFFER_SIZE];
-	va_list ap;
-
-	va_start(ap, format);
-	vsnprintf(buffer, sizeof(buffer), format, ap);
-	va_end(ap);
-
-	cf_print_error(scanner, LOG_ERR, buffer);
-	_parser_res = KNOT_EPARSEFAIL;
-}
-
-/*! \brief Config warning report. */
-void cf_warning(void *scanner, const char *format, ...)
-{
-	char buffer[ERROR_BUFFER_SIZE];
-	va_list ap;
-
-	va_start(ap, format);
-	vsnprintf(buffer, sizeof(buffer), format, ap);
-	va_end(ap);
-
-	cf_print_error(scanner, LOG_WARNING, buffer);
-}
 
 /*!
  * \brief Call config hooks that need updating.
@@ -488,29 +432,19 @@ conf_t *s_config = NULL; /*! \brief Singleton config instance. */
  * \brief Parse config (from file).
  * \return yyparser return value.
  */
-static int conf_fparser(conf_t *conf)
+int conf_fparser(const char *filename)
 {
-	if (!conf->filename) {
-		return KNOT_EINVAL;
-	}
-
 	int ret = KNOT_EOK;
-	pthread_mutex_lock(&_parser_lock);
 
-	// {
-	// Hook new configuration
-	new_config = conf;
-	FILE *f = fopen(conf->filename, "r");
+	FILE *f = fopen(filename, "r");
 	if (f == NULL) {
-		pthread_mutex_unlock(&_parser_lock);
 		return KNOT_ENOENT;
 	}
 
 	// Parse config
 	_parser_res = KNOT_EOK;
-	new_config->filename = conf->filename;
 	void *sc = NULL;
-	conf_extra_t *extra = conf_extra_init(conf->filename);
+	conf_extra_t *extra = conf_extra_init(filename);
 	cf_lex_init_extra(extra, &sc);
 	cf_set_in(f, sc);
 	cf_parse(sc);
@@ -518,8 +452,6 @@ static int conf_fparser(conf_t *conf)
 	conf_extra_free(extra);
 	ret = _parser_res;
 	fclose(f);
-	// }
-	pthread_mutex_unlock(&_parser_lock);
 
 	return ret;
 }
@@ -780,16 +712,16 @@ int conf_open(const char* path)
 	}
 
 	/* Parse config. */
+	/*
 	int ret = conf_fparser(nconf);
 	if (ret == KNOT_EOK) {
-		/* Postprocess config. */
 		ret = conf_process(nconf);
 	}
-
 	if (ret != KNOT_EOK) {
 		conf_free(nconf);
 		return ret;
 	}
+	*/
 
 	/* Replace current config. */
 	conf_t **current_config = &s_config;

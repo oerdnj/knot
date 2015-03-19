@@ -214,6 +214,7 @@ libknotd_la_SOURCES =				\
 	knot/conf/conf.h			\
 	knot/conf/extra.c			\
 	knot/conf/extra.h			\
+	knot/conf/scheme.h			\
 	knot/conf/includes.c			\
 	knot/conf/includes.h			\
 	knot/ctl/estimator.c			\

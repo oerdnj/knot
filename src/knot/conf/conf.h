@@ -410,4 +410,6 @@ static inline int conf_log_reconfigure(const conf_t *conf, void *data)
 	return log_reconfigure(&conf->logs, data);
 }
 
+int conf_fparser(const char *filename);
+
 /*! @} */
