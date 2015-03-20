@@ -22,7 +22,7 @@
 
 #include "knot/conf/extra.h"
 
-static int run_parser(FILE *out, const char *file_in, int run_count)
+static int run_parser(FILE *out, const char *file_in, int run)
 {
 	extern int cf_parse(void *scanner);
 	extern int cf_lex_init_extra(void *, void *scanner);
@@ -37,7 +37,7 @@ static int run_parser(FILE *out, const char *file_in, int run_count)
 	}
 
 	void *sc = NULL;
-	conf_extra_t *extra = conf_extra_init(file_in, run_count);
+	conf_extra_t *extra = conf_extra_init(file_in, out, run);
 	cf_lex_init_extra(extra, &sc);
 	cf_set_in(in, sc);
 	cf_parse(sc);

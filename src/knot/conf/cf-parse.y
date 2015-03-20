@@ -88,67 +88,79 @@ void cf_warning(void *scanner, const char *format, ...)
 	cf_print_error(scanner, "Warning", buffer);
 }
 
-void dump_name(const char *name)
+static void f_section(void *scanner, int run, const char *name)
 {
-	printf("    %s: ", name + 1);
+	conf_extra_t *extra = cf_get_extra(scanner);
+	if (extra->run != run) return;
+
+	fprintf(extra->out, "\n%s:\n", name + 1);
 }
 
-void dump_value(const char *format, ...)
+static void f_name(void *scanner, int run, const char *name, bool is_id)
 {
+	conf_extra_t *extra = cf_get_extra(scanner);
+	if (extra->run != run) return;
+
+	fprintf(extra->out, "%s%s: ", is_id ? "  - " : "    ", name + 1);
+}
+
+static void f_val(void *scanner, int run, bool quote, const char *format, ...)
+{
+	conf_extra_t *extra = cf_get_extra(scanner);
+	if (extra->run != run) return;
+
+	if (quote) {
+		fprintf(extra->out, "\"");
+	}
+
 	va_list ap;
-
 	va_start(ap, format);
-	vprintf(format, ap);
+	vfprintf(extra->out, format, ap);
 	va_end(ap);
-}
 
-void dump_section(const char *name)
-{
-	printf("\n%s:\n", name + 1);
-}
-
-void dump_id(const char *name, const char *value)
-{
-	printf("  - %s: %s\n", name + 1, value);
-}
-
-void dump_quote(const char *name, const char *value)
-{
-	dump_name(name);
-	dump_value("\"%s\"\n", value);
-}
-
-void dump_str(const char *name, const char *value)
-{
-	dump_name(name);
-	dump_value("%s\n", value);
-}
-
-void dump_auto_str(const char *name, int value)
-{
-	if (value == 0) {
-		dump_name(name);
-		dump_value("\"\"\n");
+	if (quote) {
+		fprintf(extra->out, "\"");
 	}
 }
 
-void dump_int(const char *name, int value)
+static void f_quote(void *scanner, int run, const char *name, const char *val)
 {
-	dump_name(name);
-	dump_value("%i\n", value);
+	f_name(scanner, run, name, false);
+	f_val(scanner, run, true, "%s", val);
+	f_val(scanner, run, false, "\n");
 }
 
-void dump_bool(const char *name, int value)
+static void f_str(void *scanner, int run, const char *name, const char *val)
 {
-	dump_name(name);
-	dump_value("%s\n", value == 1 ? "on" : "off");
+	f_name(scanner, run, name, false);
+	f_val(scanner, run, false, "%s\n", val);
 }
 
-void dump_note(const char *format, ...)
+static void f_auto_str(void *scanner, int run, const char *name, int val)
 {
-	dump_value("# ");
-	dump_value(format);
-	dump_value("\n");
+	if (val == 0) {
+		f_name(scanner, run, name, false);
+		f_val(scanner, run, true, "");
+		f_val(scanner, run, false, "\n");
+	}
+}
+
+static void f_bool(void *scanner, int run, const char *name, long val)
+{
+	f_name(scanner, run, name, false);
+	f_val(scanner, run, false, "%s\n", val == 1 ? "on" : "off");
+}
+
+static void f_int(void *scanner, int run, const char *name, int val)
+{
+	f_name(scanner, run, name, false);
+	f_val(scanner, run, false, "%i\n", val);
+}
+
+static void f_id(void *scanner, int run, const char *name, const char *val)
+{
+	f_name(scanner, run, name, true);
+	f_val(scanner, run, false, "%s\n", val);
 }
 
 %}
@@ -254,48 +266,48 @@ interface:
  ;
 
 interfaces:
-   INTERFACES '{'			{ dump_section(C_SERVER); }
- | interfaces interface_start '{'	{ dump_name(C_LISTEN); _addr = NULL, _port = -1; }
+   INTERFACES '{'			{ f_section(scanner, 2, C_SERVER); }
+ | interfaces interface_start '{'	{ f_name(scanner, 1, C_LISTEN, false); _addr = NULL, _port = -1; }
    interface '}' {
  	if (_addr == NULL) {
         	cf_error(scanner, "interface.listen address not defined");
 	} else if (_port == -1) {
-        	dump_value("%s\n", _addr);
+        	f_val(scanner, 1, false, "%s\n", _addr);
 	} else {
-        	dump_value("%s@%i\n", _addr, _port);
+        	f_val(scanner, 1, false, "%s@%i\n", _addr, _port);
 	}
    }
  ;
 
 system:
-   SYSTEM '{'				{ dump_section(C_SERVER); }
- | system SVERSION TEXT ';'		{ dump_quote(C_VERSION, $3.t); }
- | system SVERSION BOOL ';'		{ dump_auto_str(C_VERSION, $3.i); }
- | system IDENTITY TEXT ';'		{ dump_quote(C_IDENT, $3.t); }
- | system IDENTITY BOOL ';'		{ dump_auto_str(C_IDENT, $3.i); }
- | system NSID TEXT ';'			{ dump_quote(C_NSID,  $3.t); }
- | system NSID BOOL ';'			{ dump_auto_str(C_NSID, $3.i); }
- | system MAX_UDP_PAYLOAD NUM ';'	{ dump_int(C_MAX_UDP_PAYLOAD, $3.i); }
- | system RUNDIR TEXT ';'		{ dump_quote(C_RUNDIR, $3.t); }
- | system PIDFILE TEXT ';'		{ dump_quote(C_PIDFILE, $3.t); }
- | system WORKERS NUM ';'		{ dump_int(C_WORKERS, $3.i); }
- | system BACKGROUND_WORKERS NUM ';'	{ dump_int(C_BG_WORKERS, $3.i); }
- | system ASYNC_START BOOL ';'		{ dump_bool(C_ASYNC_START, $3.i); }
- | system MAX_CONN_IDLE INTERVAL ';'	{ dump_int(C_MAX_CONN_IDLE, $3.i); }
- | system MAX_CONN_HS INTERVAL ';'	{ dump_int(C_MAX_CONN_HANDSHAKE, $3.i); }
- | system MAX_CONN_REPLY INTERVAL ';'	{ dump_int(C_MAX_CONN_REPLY, $3.i); }
- | system MAX_TCP_CLIENTS NUM ';'	{ dump_int(C_MAX_TCP_CLIENTS, $3.i); }
- | system RATE_LIMIT NUM ';'		{ dump_int(C_RATE_LIMIT, $3.i); }
- | system RATE_LIMIT_SIZE SIZE ';'	{ dump_int(C_RATE_LIMIT_SIZE, $3.l); }
- | system RATE_LIMIT_SIZE NUM ';'	{ dump_int(C_RATE_LIMIT_SIZE, $3.i); }
- | system RATE_LIMIT_SLIP NUM ';'	{ dump_int(C_RATE_LIMIT_SLIP, $3.i); }
- | system TRANSFERS NUM ';'		{ dump_int(C_TRANSFERS, $3.i); }
+   SYSTEM '{'				{ f_section(scanner, 1, C_SERVER); }
+ | system SVERSION TEXT ';'		{ f_quote(scanner, 1, C_VERSION, $3.t); }
+ | system SVERSION BOOL ';'		{ f_auto_str(scanner, 1, C_VERSION, $3.i); }
+ | system IDENTITY TEXT ';'		{ f_quote(scanner, 1, C_IDENT, $3.t); }
+ | system IDENTITY BOOL ';'		{ f_auto_str(scanner, 1, C_IDENT, $3.i); }
+ | system NSID TEXT ';'			{ f_quote(scanner, 1, C_NSID,  $3.t); }
+ | system NSID BOOL ';'			{ f_auto_str(scanner, 1, C_NSID, $3.i); }
+ | system MAX_UDP_PAYLOAD NUM ';'	{ f_int(scanner, 1, C_MAX_UDP_PAYLOAD, $3.i); }
+ | system RUNDIR TEXT ';'		{ f_quote(scanner, 1, C_RUNDIR, $3.t); }
+ | system PIDFILE TEXT ';'		{ f_quote(scanner, 1, C_PIDFILE, $3.t); }
+ | system WORKERS NUM ';'		{ f_int(scanner, 1, C_WORKERS, $3.i); }
+ | system BACKGROUND_WORKERS NUM ';'	{ f_int(scanner, 1, C_BG_WORKERS, $3.i); }
+ | system ASYNC_START BOOL ';'		{ f_bool(scanner, 1, C_ASYNC_START, $3.i); }
+ | system MAX_CONN_IDLE INTERVAL ';'	{ f_int(scanner, 1, C_MAX_CONN_IDLE, $3.i); }
+ | system MAX_CONN_HS INTERVAL ';'	{ f_int(scanner, 1, C_MAX_CONN_HANDSHAKE, $3.i); }
+ | system MAX_CONN_REPLY INTERVAL ';'	{ f_int(scanner, 1, C_MAX_CONN_REPLY, $3.i); }
+ | system MAX_TCP_CLIENTS NUM ';'	{ f_int(scanner, 1, C_MAX_TCP_CLIENTS, $3.i); }
+ | system RATE_LIMIT NUM ';'		{ f_int(scanner, 1, C_RATE_LIMIT, $3.i); }
+ | system RATE_LIMIT_SIZE SIZE ';'	{ f_int(scanner, 1, C_RATE_LIMIT_SIZE, $3.l); }
+ | system RATE_LIMIT_SIZE NUM ';'	{ f_int(scanner, 1, C_RATE_LIMIT_SIZE, $3.i); }
+ | system RATE_LIMIT_SLIP NUM ';'	{ f_int(scanner, 1, C_RATE_LIMIT_SLIP, $3.i); }
+ | system TRANSFERS NUM ';'		{ f_int(scanner, 1, C_TRANSFERS, $3.i); }
  | system USER TEXT ';' {
  	char *sep = strchr($3.t, '.');
  	if (sep != NULL) {
  		*sep = ':';
  	}
- 	dump_str(C_USER, $3.t);
+ 	f_str(scanner, 1, C_USER, $3.t);
    }
  | system HOSTNAME TEXT ';' {
      cf_warning(scanner, "option 'system.hostname' is deprecated, "
@@ -312,20 +324,20 @@ system:
  ;
 
 keys:
-   KEYS '{'				{ dump_section(C_KEY); }
+   KEYS '{'				{ f_section(scanner, 1, C_KEY); }
  | keys TEXT TSIG_ALGO_NAME TEXT ';' {
-	dump_id(C_ID, $2.t);
-	dump_str(C_ALG, $3.t);
-	dump_quote(C_SECRET, $4.t);
+	f_id(scanner, 1, C_ID, $2.t);
+	f_str(scanner, 1, C_ALG, $3.t);
+	f_quote(scanner, 1, C_SECRET, $4.t);
    }
  ;
 
 remote_start:
- | TEXT					{ dump_id(C_ID, $1.t); }
- | LOG_SRC				{ dump_id(C_ID, $1.t); }
- | LOG					{ dump_id(C_ID, $1.t); }
- | LOG_LEVEL				{ dump_id(C_ID, $1.t); }
- | CONTROL				{ dump_id(C_ID, $1.t); }
+ | TEXT					{ f_id(scanner, 1, C_ID, $1.t); }
+ | LOG_SRC				{ f_id(scanner, 1, C_ID, $1.t); }
+ | LOG					{ f_id(scanner, 1, C_ID, $1.t); }
+ | LOG_LEVEL				{ f_id(scanner, 1, C_ID, $1.t); }
+ | CONTROL				{ f_id(scanner, 1, C_ID, $1.t); }
  ;
 
 remote:
@@ -335,20 +347,14 @@ remote:
  | remote ADDRESS IPA6 ';'		{ _addr = $3.t; }
  | remote ADDRESS IPA6 '@' NUM ';'	{ _addr = $3.t; _port = $5.i; }
  | remote ADDRESS IPA '/' NUM ';'	{ _addr = $3.t;
-     dump_note("subnet definition '/%i' is no longer valid in the new format, "
-               "use ACL section instead", $5.i);
-     cf_warning(scanner, "subnet definition is not valid in the new format "
-                "(see documentation)");
+// TODO
    }
  | remote ADDRESS IPA6 '/' NUM ';' {
-     dump_note("subnet definition '/%i' is no longer valid in the new format, "
-               "use ACL section instead", $5.i);
-     cf_warning(scanner, "subnet definition is not valid in the new format "
-                "(see documentation)");
-   }
- | remote KEY TEXT ';'			{ dump_str(C_KEY, $3.t); }
- | remote VIA IPA ';'			{ dump_str(C_VIA, $3.t); }
- | remote VIA IPA6 ';'			{ dump_str(C_VIA, $3.t); }
+// TODO
+ }
+ | remote KEY TEXT ';'			{ f_str(scanner, 1, C_KEY, $3.t); }
+ | remote VIA IPA ';'			{ f_str(scanner, 1, C_VIA, $3.t); }
+ | remote VIA IPA6 ';'			{ f_str(scanner, 1, C_VIA, $3.t); }
  | remote VIA TEXT ';' {
      cf_warning(scanner, "interface name in 'via' option is not valid in the new "
                 "format, use address specification instead (see documentation)");
@@ -356,17 +362,17 @@ remote:
  ;
 
 remotes:
-   REMOTES '{'				{ dump_section(C_RMT); }
+   REMOTES '{'				{ f_section(scanner, 1, C_RMT); }
  | remotes remote_start '{'		{ _addr = NULL, _port = -1; }
    remote '}' {
  	if (_addr == NULL) {
         	cf_error(scanner, "remote.address not defined");
 	} else if (_port == -1) {
-        	dump_name(C_ADDR);
-        	dump_value("%s\n", _addr);
+        	f_name(scanner, 1, C_ADDR, false);
+        	f_val(scanner, 1, false, "%s\n", _addr);
 	} else {
-        	dump_name(C_ADDR);
-        	dump_value("%s@%i\n", _addr, _port);
+        	f_name(scanner, 1, C_ADDR, false);
+        	f_val(scanner, 1, false, "%s@%i\n", _addr, _port);
         }
  }
  ;
@@ -394,24 +400,24 @@ groups:
  ;
 
 zone_acl_start:
-   XFR_IN { dump_name(C_MASTER);
+   XFR_IN { f_name(scanner, 1, C_MASTER, false);
    }
- | XFR_OUT { dump_name(C_ACL);
+ | XFR_OUT { f_name(scanner, 1, C_ACL, false);
    }
- | NOTIFY_IN { dump_name(C_ACL);
+ | NOTIFY_IN { f_name(scanner, 1, C_ACL, false);
    }
- | NOTIFY_OUT { dump_name(C_NOTIFY);
+ | NOTIFY_OUT { f_name(scanner, 1, C_NOTIFY, false);
    }
- | UPDATE_IN { dump_name(C_ACL);
+ | UPDATE_IN { f_name(scanner, 1, C_ACL, false);
  }
  ;
 
 zone_acl_item:
- | TEXT { dump_value("%s\n", $1.t); }
- | LOG_SRC  { dump_value("%s\n", $1.t); }
- | LOG  { dump_value("%s\n", $1.t); }
- | LOG_LEVEL  { dump_value("%s\n", $1.t); }
- | CONTROL    { dump_value("%s\n", $1.t); }
+ | TEXT      { f_val(scanner, 1, false, "%s\n", $1.t); }
+ | LOG_SRC   { f_val(scanner, 1, false, "%s\n", $1.t); }
+ | LOG       { f_val(scanner, 1, false, "%s\n", $1.t); }
+ | LOG_LEVEL { f_val(scanner, 1, false, "%s\n", $1.t); }
+ | CONTROL   { f_val(scanner, 1, false, "%s\n", $1.t); }
  ;
 
 zone_acl_list:
@@ -433,36 +439,40 @@ query_module_list:
  ;
 
 zone_start:
- | USER					{ dump_id(C_DOMAIN, $1.t); }
- | REMOTES				{ dump_id(C_DOMAIN, $1.t); }
- | LOG_SRC				{ dump_id(C_DOMAIN, $1.t); }
- | LOG					{ dump_id(C_DOMAIN, $1.t); }
- | LOG_LEVEL				{ dump_id(C_DOMAIN, $1.t); }
- | CONTROL				{ dump_id(C_DOMAIN, $1.t); }
- | NUM '/' TEXT				{ /*dump_id(C_DOMAIN, "%s/%s", $1.t, $3.t);*/ }
- | TEXT					{ dump_id(C_DOMAIN, $1.t); }
+ | USER					{ f_id(scanner, 1, C_DOMAIN, $1.t); }
+ | REMOTES				{ f_id(scanner, 1, C_DOMAIN, $1.t); }
+ | LOG_SRC				{ f_id(scanner, 1, C_DOMAIN, $1.t); }
+ | LOG					{ f_id(scanner, 1, C_DOMAIN, $1.t); }
+ | LOG_LEVEL				{ f_id(scanner, 1, C_DOMAIN, $1.t); }
+ | CONTROL				{ f_id(scanner, 1, C_DOMAIN, $1.t); }
+ | NUM '/' TEXT				{
+      f_name(scanner, 1, C_DOMAIN, true);
+      f_val(scanner, 1, false, "%i/%s", $1.i, $3.t);
+      f_val(scanner, 1, false, "\n");
+   }
+ | TEXT					{ f_id(scanner, 1, C_DOMAIN, $1.t); }
  ;
 
 zone:
    zone_start '{'
  | zone zone_acl_start '{' zone_acl '}'
  | zone zone_acl_start zone_acl_list
- | zone FILENAME TEXT ';'			{ dump_quote(C_FILE, $3.t); }
- | zone DISABLE_ANY BOOL ';'			{ dump_bool(C_DISABLE_ANY, $3.i); }
- | zone BUILD_DIFFS BOOL ';'			{ dump_bool(C_IXFR_DIFF, $3.i); }
- | zone SEMANTIC_CHECKS BOOL ';'		{ dump_bool(C_SEM_CHECKS, $3.i); }
- | zone IXFR_FSLIMIT SIZE ';'			{ dump_int(C_IXFR_FSLIMIT, $3.l); }
- | zone IXFR_FSLIMIT NUM ';'			{ dump_int(C_IXFR_FSLIMIT, $3.i); }
- | zone NOTIFY_RETRIES NUM ';'			{ dump_int(C_NOTIFY_RETRIES, $3.i); }
- | zone NOTIFY_TIMEOUT NUM ';'			{ dump_int(C_NOTIFY_TIMEOUT, $3.i); }
- | zone DBSYNC_TIMEOUT NUM ';'			{ dump_int(C_ZONEFILE_SYNC, $3.i); }
- | zone DBSYNC_TIMEOUT INTERVAL ';'		{ dump_int(C_ZONEFILE_SYNC, $3.i); }
- | zone STORAGE TEXT ';'			{ dump_quote(C_STORAGE, $3.t); }
- | zone DNSSEC_ENABLE BOOL ';'			{ dump_bool(C_DNSSEC_ENABLE, $3.i); }
- | zone DNSSEC_KEYDIR TEXT ';'			{ dump_quote(C_DNSSEC_KEYDIR, $3.t); }
- | zone SIGNATURE_LIFETIME NUM ';'		{ dump_int(C_SIG_LIFETIME, $3.i); }
- | zone SIGNATURE_LIFETIME INTERVAL ';'		{ dump_int(C_SIG_LIFETIME, $3.i); }
- | zone SERIAL_POLICY SERIAL_POLICY_VAL ';'	{ dump_str(C_SERIAL_POLICY, $3.t); }
+ | zone FILENAME TEXT ';'			{ f_quote(scanner, 1, C_FILE, $3.t); }
+ | zone DISABLE_ANY BOOL ';'			{ f_bool(scanner, 1, C_DISABLE_ANY, $3.i); }
+ | zone BUILD_DIFFS BOOL ';'			{ f_bool(scanner, 1, C_IXFR_DIFF, $3.i); }
+ | zone SEMANTIC_CHECKS BOOL ';'		{ f_bool(scanner, 1, C_SEM_CHECKS, $3.i); }
+ | zone IXFR_FSLIMIT SIZE ';'			{ f_int(scanner, 1, C_IXFR_FSLIMIT, $3.l); }
+ | zone IXFR_FSLIMIT NUM ';'			{ f_int(scanner, 1, C_IXFR_FSLIMIT, $3.i); }
+ | zone NOTIFY_RETRIES NUM ';'			{ f_int(scanner, 1, C_NOTIFY_RETRIES, $3.i); }
+ | zone NOTIFY_TIMEOUT NUM ';'			{ f_int(scanner, 1, C_NOTIFY_TIMEOUT, $3.i); }
+ | zone DBSYNC_TIMEOUT NUM ';'			{ f_int(scanner, 1, C_ZONEFILE_SYNC, $3.i); }
+ | zone DBSYNC_TIMEOUT INTERVAL ';'		{ f_int(scanner, 1, C_ZONEFILE_SYNC, $3.i); }
+ | zone STORAGE TEXT ';'			{ f_quote(scanner, 1, C_STORAGE, $3.t); }
+ | zone DNSSEC_ENABLE BOOL ';'			{ f_bool(scanner, 1, C_DNSSEC_ENABLE, $3.i); }
+ | zone DNSSEC_KEYDIR TEXT ';'			{ f_quote(scanner, 1, C_DNSSEC_KEYDIR, $3.t); }
+ | zone SIGNATURE_LIFETIME NUM ';'		{ f_int(scanner, 1, C_SIG_LIFETIME, $3.i); }
+ | zone SIGNATURE_LIFETIME INTERVAL ';'		{ f_int(scanner, 1, C_SIG_LIFETIME, $3.i); }
+ | zone SERIAL_POLICY SERIAL_POLICY_VAL ';'	{ f_str(scanner, 1, C_SERIAL_POLICY, $3.t); }
  | zone QUERY_MODULE '{' {
 
    }
@@ -477,23 +487,23 @@ query_genmodule_list:
  ;
 
 zones:
-   ZONES '{'					{ dump_section(C_ZONE); }
+   ZONES '{'					{ f_section(scanner, 1, C_ZONE); }
  | zones zone '}'
- | zones DISABLE_ANY BOOL ';'			{ dump_bool(C_DISABLE_ANY, $3.i); }
- | zones BUILD_DIFFS BOOL ';'			{ dump_bool(C_IXFR_DIFF, $3.i); }
- | zones SEMANTIC_CHECKS BOOL ';'		{ dump_bool(C_SEM_CHECKS, $3.i); }
- | zones IXFR_FSLIMIT SIZE ';'			{ dump_int(C_IXFR_FSLIMIT, $3.l); }
- | zones IXFR_FSLIMIT NUM ';'			{ dump_int(C_IXFR_FSLIMIT, $3.i); }
- | zones NOTIFY_RETRIES NUM ';'			{ dump_int(C_NOTIFY_RETRIES, $3.i); }
- | zones NOTIFY_TIMEOUT NUM ';'			{ dump_int(C_NOTIFY_TIMEOUT, $3.i); }
- | zones DBSYNC_TIMEOUT NUM ';'			{ dump_int(C_ZONEFILE_SYNC, $3.i); }
- | zones DBSYNC_TIMEOUT INTERVAL ';'		{ dump_int(C_ZONEFILE_SYNC, $3.i); }
- | zones STORAGE TEXT ';'			{ dump_quote(C_STORAGE, $3.t); }
- | zones DNSSEC_ENABLE BOOL ';'			{ dump_bool(C_DNSSEC_ENABLE, $3.i); }
- | zones DNSSEC_KEYDIR TEXT ';'			{ dump_quote(C_DNSSEC_KEYDIR, $3.t); }
- | zones SIGNATURE_LIFETIME NUM ';'		{ dump_int(C_SIG_LIFETIME, $3.i); }
- | zones SIGNATURE_LIFETIME INTERVAL ';'	{ dump_int(C_SIG_LIFETIME, $3.i); }
- | zones SERIAL_POLICY SERIAL_POLICY_VAL ';'	{ dump_str(C_SERIAL_POLICY, $3.t); }
+ | zones DISABLE_ANY BOOL ';'			{ f_bool(scanner, 1, C_DISABLE_ANY, $3.i); }
+ | zones BUILD_DIFFS BOOL ';'			{ f_bool(scanner, 1, C_IXFR_DIFF, $3.i); }
+ | zones SEMANTIC_CHECKS BOOL ';'		{ f_bool(scanner, 1, C_SEM_CHECKS, $3.i); }
+ | zones IXFR_FSLIMIT SIZE ';'			{ f_int(scanner, 1, C_IXFR_FSLIMIT, $3.l); }
+ | zones IXFR_FSLIMIT NUM ';'			{ f_int(scanner, 1, C_IXFR_FSLIMIT, $3.i); }
+ | zones NOTIFY_RETRIES NUM ';'			{ f_int(scanner, 1, C_NOTIFY_RETRIES, $3.i); }
+ | zones NOTIFY_TIMEOUT NUM ';'			{ f_int(scanner, 1, C_NOTIFY_TIMEOUT, $3.i); }
+ | zones DBSYNC_TIMEOUT NUM ';'			{ f_int(scanner, 1, C_ZONEFILE_SYNC, $3.i); }
+ | zones DBSYNC_TIMEOUT INTERVAL ';'		{ f_int(scanner, 1, C_ZONEFILE_SYNC, $3.i); }
+ | zones STORAGE TEXT ';'			{ f_quote(scanner, 1, C_STORAGE, $3.t); }
+ | zones DNSSEC_ENABLE BOOL ';'			{ f_bool(scanner, 1, C_DNSSEC_ENABLE, $3.i); }
+ | zones DNSSEC_KEYDIR TEXT ';'			{ f_quote(scanner, 1, C_DNSSEC_KEYDIR, $3.t); }
+ | zones SIGNATURE_LIFETIME NUM ';'		{ f_int(scanner, 1, C_SIG_LIFETIME, $3.i); }
+ | zones SIGNATURE_LIFETIME INTERVAL ';'	{ f_int(scanner, 1, C_SIG_LIFETIME, $3.i); }
+ | zones SERIAL_POLICY SERIAL_POLICY_VAL ';'	{ f_str(scanner, 1, C_SERIAL_POLICY, $3.t); }
  | zones QUERY_MODULE '{' {
 
    }
@@ -507,20 +517,24 @@ log_prios:
 
 log_src:
  | log_src LOG_SRC {
-     dump_name($2.t);
+     f_name(scanner, 1, $2.t, false);
      _str = NULL;
    }
    log_prios {
-     dump_value("%s\n", _str);
+     f_val(scanner, 1, false, "%s\n", _str);
    }
  ;
 
 log_dest:
-   LOG_DEST { dump_id(C_TO, $1.t); }
+   LOG_DEST { f_id(scanner, 1, C_TO, $1.t); }
 ;
 
 log_file:
-   FILENAME TEXT { dump_id(C_TO, $2.t); /*quote*/}
+   FILENAME TEXT {
+      f_name(scanner, 1, C_TO, true);
+      f_val(scanner, 1, true, "%s", $2.t);
+      f_val(scanner, 1, false, "\n");
+   }
 ;
 
 log_start:
@@ -529,7 +543,7 @@ log_start:
  ;
 
 log:
-   LOG '{'				{ dump_section(C_LOG); }
+   LOG '{'				{ f_section(scanner, 1, C_LOG); }
    log_start
  ;
 
@@ -542,16 +556,18 @@ ctl_allow_start:
   ;
 
 control:
-   CONTROL '{'				{ dump_section(C_CTL); }
- | control ctl_listen_start '{'		{ dump_name(C_LISTEN); _addr = NULL, _port = DEFAULT_CTL_PORT; }
+   CONTROL '{'				{ f_section(scanner, 1, C_CTL); }
+ | control ctl_listen_start '{'		{ f_name(scanner, 1, C_LISTEN, false); _addr = NULL, _port = -1; }
    interface '}' {
  	if (_addr == NULL) {
         	cf_error(scanner, "control.listen address not defined");
+	} else if (_port == -1) {
+        	f_val(scanner, 1, false, "%s\n", _addr);
 	} else {
-        	dump_value("%s@%i\n", _addr, _port);
+        	f_val(scanner, 1, false, "%s@%i\n", _addr, _port);
 	}
    }
- | control ctl_listen_start TEXT ';'	{ dump_quote(C_LISTEN, $3.t); }
+ | control ctl_listen_start TEXT ';'	{ f_quote(scanner, 1, C_LISTEN, $3.t); }
  | control ctl_allow_start '{' zone_acl '}'
  | control ctl_allow_start zone_acl_list
  ;

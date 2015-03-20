@@ -26,7 +26,8 @@
 typedef struct {
 	bool error;                //!< Indicates that error was set.
 	conf_includes_t *includes; //!< Used to handle filenames in includes.
-	int run_count;
+	FILE *out;
+	int run;
 } conf_extra_t;
 
 /*!
@@ -36,7 +37,7 @@ typedef struct {
  *
  * \return Initialized stucture or NULL.
  */
-conf_extra_t *conf_extra_init(const char *file, int run_count);
+conf_extra_t *conf_extra_init(const char *file, FILE *out, int run);
 
 /*!
  * \brief Free structure with custom data for config parser.
