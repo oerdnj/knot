@@ -21,8 +21,9 @@
 #include <unistd.h>
 
 #include "knot/conf/extra.h"
+#include "knot/conf/scheme.h"
 
-static int run_parser(FILE *out, const char *file_in, int run)
+static int run_parser(const char *file_in, int run, share_t *share)
 {
 	extern int cf_parse(void *scanner);
 	extern int cf_lex_init_extra(void *, void *scanner);
@@ -37,7 +38,7 @@ static int run_parser(FILE *out, const char *file_in, int run)
 	}
 
 	void *sc = NULL;
-	conf_extra_t *extra = conf_extra_init(file_in, out, run);
+	conf_extra_t *extra = conf_extra_init(file_in, run, share);
 	cf_lex_init_extra(extra, &sc);
 	cf_set_in(in, sc);
 	cf_parse(sc);
@@ -57,9 +58,13 @@ static int convert(const char *file_out, const char *file_in)
 		return -1;
 	}
 
+	share_t share = {
+		.out = out
+	};
+
 	// Parse the input file multiple times to get some context.
-	for (int i = 1; i <= 2; i++) {
-		int ret = run_parser(out, file_in, i);
+	for (int i = R_SYS; i <= R_LOG; i++) {
+		int ret = run_parser(file_in, i, &share);
 		if (ret != 0) {
 			fclose(out);
 			return ret;

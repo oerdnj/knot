@@ -16,6 +16,39 @@
 
 #pragma once
 
+typedef enum {
+	S_FIRST = 0,
+	S_SRV = S_FIRST,
+	S_KEY,
+	S_ACL,
+	S_RMT,
+	S_CTL,
+	S_DNSTAP,
+	S_SYNTH,
+	S_DNSPROXY,
+	S_ROSEDB,
+	S_TPL,
+	S_ZONE,
+	S_LOG,
+	S_LAST = S_LOG
+} section_t;
+
+enum {
+	R_SYS,     // -> SERVER
+	R_IF,      // -> SERVER
+	R_KEY,     // -> KEY
+	R_RMT1,    // -> ACL
+	R_RMT2,    // -> REMOTE
+	R_CTL,     // -> CONTROL
+	R_ZONEM1,  // -> MOD_DNSTAP
+	R_ZONEM2,  // -> MOD_SYNTRECORD
+	R_ZONEM3,  // -> MOD_DNSPROXY
+	R_ZONEM4,  // -> MOD_ROSEDB
+	R_ZONE_TPL, // -> TEMPLATE default
+	R_ZONE,     // -> ZONE
+	R_LOG,      // -> LOG
+};
+
 #define C_ACL			"\x03""acl"
 #define C_ACTION		"\x06""action"
 #define C_ADDR			"\x07""address"
@@ -71,3 +104,27 @@
 #define C_WORKERS		"\x07""workers"
 #define C_ZONE			"\x04""zone"
 #define C_ZONEFILE_SYNC		"\x0D""zonefile-sync"
+
+#define C_MOD_DNSPROXY		"\x0C""mod-dnsproxy"
+#define C_MOD_DNSTAP		"\x0A""mod-dnstap"
+#define C_MOD_ROSEDB		"\x0A""mod-rosedb"
+#define C_MOD_SYNTH_RECORD	"\x10""mod-synth-record"
+
+inline static const char* section_name(section_t id)
+{
+	switch (id) {
+	case S_SRV:		return C_SRV;
+	case S_KEY:		return C_KEY;
+	case S_ACL:		return C_ACL;
+	case S_RMT:		return C_RMT;
+	case S_CTL:		return C_CTL;
+	case S_DNSTAP:		return C_MOD_DNSTAP;
+	case S_SYNTH:		return C_MOD_SYNTH_RECORD;
+	case S_DNSPROXY:	return C_MOD_DNSPROXY;
+	case S_ROSEDB:		return C_MOD_ROSEDB;
+	case S_TPL:		return C_TPL;
+	case S_ZONE:		return C_ZONE;
+	case S_LOG:		return C_LOG;
+	default:		return NULL;
+	}
+}

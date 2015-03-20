@@ -23,7 +23,7 @@
 /*!
  * \brief Init structure with custom data for config parser.
  */
-conf_extra_t *conf_extra_init(const char *file, FILE *out, int run)
+conf_extra_t *conf_extra_init(const char *file, int run, share_t *share)
 {
 	conf_extra_t *extra = calloc(1, sizeof(conf_extra_t));
 	if (!extra) {
@@ -44,8 +44,8 @@ conf_extra_t *conf_extra_init(const char *file, FILE *out, int run)
 
 	extra->error = false;
 	extra->includes = includes;
-	extra->out = out;
 	extra->run = run;
+	extra->share = share;
 
 	return extra;
 }

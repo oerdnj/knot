@@ -19,6 +19,12 @@
 #include <stdbool.h>
 
 #include "knot/conf/includes.h"
+#include "knot/conf/scheme.h"
+
+typedef struct {
+	FILE *out;
+	bool have_sections[S_LAST - S_FIRST + 1];
+} share_t;
 
 /*!
  * \brief Custom data held within the parser context.
@@ -26,8 +32,8 @@
 typedef struct {
 	bool error;                //!< Indicates that error was set.
 	conf_includes_t *includes; //!< Used to handle filenames in includes.
-	FILE *out;
 	int run;
+	share_t *share;
 } conf_extra_t;
 
 /*!
@@ -37,7 +43,7 @@ typedef struct {
  *
  * \return Initialized stucture or NULL.
  */
-conf_extra_t *conf_extra_init(const char *file, FILE *out, int run);
+conf_extra_t *conf_extra_init(const char *file, int run, share_t *share);
 
 /*!
  * \brief Free structure with custom data for config parser.
