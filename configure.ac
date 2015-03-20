@@ -34,10 +34,6 @@ LT_INIT
 
 # Use pkg-config
 m4_ifdef([PKG_INSTALLDIR], [PKG_INSTALLDIR], [AC_SUBST([pkgconfigdir], ['${libdir}/pkgconfig'])])
-AC_CONFIG_FILES([src/libknot.pc
-		 src/libknot-int.pc
-		 src/libknot-yparser.pc
-		 src/dnssec/libdnssec.pc])
 
 # Build Knot DNS daemon
 AC_ARG_ENABLE([daemon],
@@ -426,27 +422,7 @@ AM_CONDITIONAL([HAVE_PDFLATEX], test "$PDFLATEX" != "false")
 AM_CONDITIONAL([HAVE_MAKEINFO], test "$MAKEINFO" != "false")
 
 AC_CONFIG_FILES([Makefile
-		 doc/Makefile
-		 man/Makefile
-		 samples/Makefile
-		 libtap/Makefile
 		 src/Makefile
-		 tests/Makefile
-		 src/dnstap/Makefile
-		 src/zscanner/Makefile
-		 src/dnssec/Makefile
-		 src/dnssec/man/Makefile
-		 src/dnssec/man/keymgr.8
-		 src/dnssec/man/knsec3hash.1
-		 src/dnssec/tests/Makefile
-		 src/dnssec/utils/Makefile
-		 doc/conf.py
-		 man/khost.1
-		 man/knotc.8
-		 man/knotd.8
-		 man/kdig.1
-		 man/knsupdate.1
-		 man/knot.conf.5
 		 ])
 
 AC_OUTPUT

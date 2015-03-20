@@ -13,16 +13,6 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-/*!
- * \file extra.h
- *
- * \author Jan Vcelak <jan.vcelak@nic.cz>
- *
- * \brief API for managing custom data in the configuration parser.
- *
- * \addtogroup config
- * @{
- */
 
 #pragma once
 
@@ -36,6 +26,7 @@
 typedef struct {
 	bool error;                //!< Indicates that error was set.
 	conf_includes_t *includes; //!< Used to handle filenames in includes.
+	int run_count;
 } conf_extra_t;
 
 /*!
@@ -45,7 +36,7 @@ typedef struct {
  *
  * \return Initialized stucture or NULL.
  */
-conf_extra_t *conf_extra_init(const char *file);
+conf_extra_t *conf_extra_init(const char *file, int run_count);
 
 /*!
  * \brief Free structure with custom data for config parser.
@@ -53,5 +44,3 @@ conf_extra_t *conf_extra_init(const char *file);
  * \param extra  Structure to be freed.
  */
 void conf_extra_free(conf_extra_t *extra);
-
-/*! @} */

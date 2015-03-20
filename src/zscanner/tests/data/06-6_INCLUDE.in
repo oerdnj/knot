@@ -1,5 +1,0 @@
-$ORIGIN .
-$TTL	1
-
-; KO
-$INCLUDE ./includes/include4		; Include file contains warning

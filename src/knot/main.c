@@ -20,7 +20,56 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#include "knot/conf/conf.h"
+#include "knot/conf/extra.h"
+
+static int run_parser(FILE *out, const char *file_in, int run_count)
+{
+	extern int cf_parse(void *scanner);
+	extern int cf_lex_init_extra(void *, void *scanner);
+	extern void cf_set_in(FILE *f, void *scanner);
+	extern void cf_lex_destroy(void *scanner);
+	extern volatile int parser_ret;
+
+	FILE *in = fopen(file_in, "r");
+	if (in == NULL) {
+		printf("Failed to open input file '%s'\n", file_in);
+		return -1;
+	}
+
+	void *sc = NULL;
+	conf_extra_t *extra = conf_extra_init(file_in, run_count);
+	cf_lex_init_extra(extra, &sc);
+	cf_set_in(in, sc);
+	cf_parse(sc);
+	cf_lex_destroy(sc);
+	conf_extra_free(extra);
+
+	fclose(in);
+
+	return parser_ret;
+}
+
+static int convert(const char *file_out, const char *file_in)
+{
+	FILE *out = fopen(file_out, "w");
+	if (out == NULL) {
+		printf("Failed to open output file '%s'\n", file_out);
+		return -1;
+	}
+
+	// Parse the input file multiple times to get some context.
+	for (int i = 1; i <= 2; i++) {
+		int ret = run_parser(out, file_in, i);
+		if (ret != 0) {
+			fclose(out);
+			return ret;
+		}
+	}
+
+	fclose(out);
+
+	return 0;
+}
 
 void help(void)
 {
@@ -35,15 +84,15 @@ void help(void)
 int main(int argc, char **argv)
 {
 	int c = 0, li = 0;
-	const char *in = NULL;
-	const char *out = NULL;
+	const char *file_in = NULL;
+	const char *file_out = NULL;
 
 	struct option opts[] = {
-		{"in",      required_argument, 0, 'i'},
-		{"out",     required_argument, 0, 'o'},
-		{"version", no_argument,       0, 'V'},
-		{"help",    no_argument,       0, 'h'},
-		{0, 0, 0, 0}
+		{ "in",      required_argument, NULL, 'i' },
+		{ "out",     required_argument, NULL, 'o' },
+		{ "version", no_argument,       NULL, 'V' },
+		{ "help",    no_argument,       NULL, 'h' },
+		{ NULL }
 	};
 
 	// Parse parameters.
@@ -51,10 +100,10 @@ int main(int argc, char **argv)
 		switch (c)
 		{
 		case 'i':
-			in = optarg;
+			file_in = optarg;
 			break;
 		case 'o':
-			out = optarg;
+			file_out = optarg;
 			break;
 		case 'V':
 			printf("%s, version %s\n", "Knot DNS", PACKAGE_VERSION);
@@ -70,25 +119,16 @@ int main(int argc, char **argv)
 	}
 
 	// Check for missing or invalid parameters.
-	if (argc - optind > 0 || in == NULL || out == NULL) {
+	if (argc - optind > 0 || file_in == NULL || file_out == NULL) {
 		help();
 		return EXIT_FAILURE;
 	}
 
-	// Open output file.
-	FILE *fout = fopen(out, "w");
-	if (fout == NULL) {
-		printf("Failed to open output file '%s'\n", out);
-		return EXIT_FAILURE;
-	}
-
-	// Parse the configuration.
-	int ret = conf_fparser(in);
+	// Convert the file.
+	int ret = convert(file_out, file_in);
 	if (ret != 0) {
 		return EXIT_FAILURE;
 	}
-
-	fclose(fout);
 
 	return EXIT_SUCCESS;
 }

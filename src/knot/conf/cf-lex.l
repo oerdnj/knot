@@ -13,40 +13,23 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
-/*!
- * \file cf-lex.l
- *
- * \author Ondrej Sury <ondrej.sury@nic.cz>
- *
- * \brief Server configuration structures and API.
- *
- * IP address conversions from BIRD, (c) 1998--2000 Martin Mares <mj@ucw.cz>
- */
 %{
 
 #include <config.h>
 #include <dirent.h>
-#include <errno.h>
 #include <stdlib.h>
-#include <stdarg.h>
-#include <stdbool.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <arpa/inet.h>
 
 #include "knot/conf/scheme.h"
-#include "knot/conf/conf.h"
 #include "knot/conf/includes.h"
 #include "knot/conf/extra.h"
-#include "libknotd_la-cf-parse.h" /* Automake generated header. */
+#include "cf-parse.h"
 
 /* Imported symbols. */
 #define lval (yylval->tok)
 extern void cf_error(void *scanner, const char *format, ...);
-extern int (*cf_read_hook)(char *buf, size_t nbytes);
-void switch_input(const char *str, void *scanner)
-{
-	yy_scan_string(str, scanner);
-}
 
 /* Convert hex to binary. */
 static inline char xd(char d) {
@@ -62,7 +45,6 @@ int hex2bin(const char* src, char *dst, size_t len) {
 	return 0;
 }
 
-//#define YY_INPUT(buf,result,max) result = cf_read_hook(buf, max);
 #define YY_NO_UNPUT
 
 %}
@@ -151,9 +133,9 @@ any { lval.t = C_ANY; return LOG_SRC; }
 server { lval.t = C_SRV; return LOG_SRC; }
 zone { lval.t = C_ZONE; return LOG_SRC; }
 
-stdout { lval.t = yytext; lval.i = LOGT_STDOUT; return LOG_DEST; }
-stderr { lval.t = yytext; lval.i = LOGT_STDERR; return LOG_DEST; }
-syslog { lval.t = yytext; lval.i = LOGT_SYSLOG; return LOG_DEST; }
+stdout { lval.t = yytext; return LOG_DEST; }
+stderr { lval.t = yytext; return LOG_DEST; }
+syslog { lval.t = yytext; return LOG_DEST; }
 
 debug    { lval.t = "debug";    return LOG_LEVEL; }
 info     { lval.t = "info";     return LOG_LEVEL; }

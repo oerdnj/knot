@@ -13,45 +13,32 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
-/*!
- * \file cf-parse.y
- *
- * \author Ondrej Sury <ondrej.sury@nic.cz>
- *
- * \brief Server configuration structures and API.
- */
 %{
 
 #include <config.h>
-#include <ctype.h>
-#include <limits.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <pwd.h>
-#include <grp.h>
+#include <stdarg.h>
 
 #include "knot/conf/scheme.h"
-#include "knot/conf/conf.h"
 #include "knot/conf/extra.h"
-#include "knot/conf/libknotd_la-cf-parse.h" /* Automake generated header. */
-
-extern int cf_lex (YYSTYPE *lvalp, void *scanner);
+#include "knot/conf/cf-parse.h"
 
 #define DEFAULT_PORT		53
 #define DEFAULT_CTL_PORT	5533
 
 static char *_addr = NULL;
 static int _port = -1;
+static char *_str = NULL;
 
-const char *_str = NULL;
-
-#define ERROR_BUFFER_SIZE       512 /*!< \brief Error buffer size. */
+#define ERROR_BUFFER_SIZE       512
+extern int cf_lex (YYSTYPE *lvalp, void *scanner);
 extern int cf_get_lineno(void *scanner);
 extern char *cf_get_text(void *scanner);
 extern conf_extra_t *cf_get_extra(void *scanner);
-extern int cf_lex_init_extra(void *, void *scanner);
-volatile int _parser_res = 0; /*!< \brief Parser result. */
+volatile int parser_ret = 0;
+
 static void cf_print_error(void *scanner, const char *prefix, const char *msg)
 {
 	conf_extra_t *extra = NULL;
@@ -63,7 +50,7 @@ static void cf_print_error(void *scanner, const char *prefix, const char *msg)
 		extra = cf_get_extra(scanner);
 		lineno = cf_get_lineno(scanner);
 		inc = conf_includes_top(extra->includes);
-		extra->error = true;
+		//extra->error = true;
 	}
 
 	if (inc && inc->filename) {
@@ -86,7 +73,7 @@ void cf_error(void *scanner, const char *format, ...)
 	va_end(ap);
 
 	cf_print_error(scanner, "Error", buffer);
-	_parser_res = KNOT_EPARSEFAIL;
+	parser_ret = -1;
 }
 
 void cf_warning(void *scanner, const char *format, ...)
@@ -99,7 +86,6 @@ void cf_warning(void *scanner, const char *format, ...)
 	va_end(ap);
 
 	cf_print_error(scanner, "Warning", buffer);
-	_parser_res = KNOT_EPARSEFAIL;
 }
 
 void dump_name(const char *name)

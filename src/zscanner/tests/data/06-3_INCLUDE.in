@@ -1,5 +1,0 @@
-$ORIGIN .
-$TTL	1
-
-; KO
-$INCLUDE @TMPDIR@/		; Given file is a directory
