@@ -33,11 +33,10 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#include "libknot/internal/sockaddr.h"
+#include "knot/conf/scheme.h"
 #include "knot/conf/conf.h"
 #include "knot/conf/includes.h"
 #include "knot/conf/extra.h"
-#include "knot/common/log.h"
 #include "libknotd_la-cf-parse.h" /* Automake generated header. */
 
 /* Imported symbols. */
@@ -148,39 +147,26 @@ listen-on       { lval.t = yytext; return LISTEN_ON; }
 
 log             { lval.t = yytext; return LOG; }
 
-any { lval.t = yytext; lval.i = LOG_ANY; return LOG_SRC; }
-server { lval.t = yytext; lval.i = LOG_SERVER; return LOG_SRC; }
-answering {
-	lval.t = yytext;
-	lval.i = LOG_SERVER;
-	fprintf(stderr, "Warning: log category 'answering' is no longer "
-	                "supported. Using 'server' instead.\n");
-	return LOG_SRC;
-}
-zone { lval.t = yytext; lval.i = LOG_ZONE; return LOG_SRC; }
+any { lval.t = C_ANY; return LOG_SRC; }
+server { lval.t = C_SRV; return LOG_SRC; }
+zone { lval.t = C_ZONE; return LOG_SRC; }
+
 stdout { lval.t = yytext; lval.i = LOGT_STDOUT; return LOG_DEST; }
 stderr { lval.t = yytext; lval.i = LOGT_STDERR; return LOG_DEST; }
 syslog { lval.t = yytext; lval.i = LOGT_SYSLOG; return LOG_DEST; }
-debug { lval.t = yytext; lval.i = LOG_UPTO(LOG_DEBUG); return LOG_LEVEL; }
-info { lval.t = yytext; lval.i = LOG_UPTO(LOG_INFO); return LOG_LEVEL; }
-notice { lval.t = yytext; lval.i = LOG_UPTO(LOG_NOTICE); return LOG_LEVEL; }
-warning { lval.t = yytext; lval.i = LOG_UPTO(LOG_WARNING); return LOG_LEVEL; }
-error { lval.t = yytext; lval.i = LOG_UPTO(LOG_ERR); return LOG_LEVEL; }
-critical { lval.t = yytext; lval.i = LOG_UPTO(LOG_CRIT); return LOG_LEVEL; }
-all {
-	lval.t = yytext;
-	lval.i = LOG_UPTO(LOG_INFO);
-	fprintf(stderr, "Warning: log severity 'all' is no longer "
-	                "supported. Using 'info' instead.\n");
-	return LOG_LEVEL;
-}
+
+debug    { lval.t = "debug";    return LOG_LEVEL; }
+info     { lval.t = "info";     return LOG_LEVEL; }
+notice   { lval.t = "notice";   return LOG_LEVEL; }
+warning  { lval.t = "warning";  return LOG_LEVEL; }
+error    { lval.t = "error";    return LOG_LEVEL; }
+critical { lval.t = "critical"; return LOG_LEVEL; }
+all      { lval.t = "info";     return LOG_LEVEL; }
 
 increment|unixtime {
-  lval.t = yytext;
+  lval.t = "unixtime";
   if (strcmp(yytext, "increment") == 0) {
     lval.t = "increment";
-  } else {
-    lval.t = "unixtime";
   }
   return SERIAL_POLICY_VAL;
 }

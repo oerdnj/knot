@@ -32,25 +32,11 @@
 #include <grp.h>
 
 #include "knot/conf/scheme.h"
-#include "dnssec/binary.h"
-#include "dnssec/tsig.h"
-#include "libknot/internal/sockaddr.h"
-#include "libknot/internal/strlcat.h"
-#include "libknot/internal/strlcpy.h"
-#include "libknot/dname.h"
-#include "libknot/binary.h"
-#include "libknot/rrtype/opt.h"
-#include "knot/server/rrl.h"
 #include "knot/conf/conf.h"
 #include "knot/conf/extra.h"
 #include "knot/conf/libknotd_la-cf-parse.h" /* Automake generated header. */
 
 extern int cf_lex (YYSTYPE *lvalp, void *scanner);
-static conf_zone_t *this_zone = 0;
-static list_t *this_list = 0;
-static conf_log_t *this_log = 0;
-static conf_log_map_t *this_logmap = 0;
-//#define YYERROR_VERBOSE 1
 
 #define DEFAULT_PORT		53
 #define DEFAULT_CTL_PORT	5533
@@ -58,6 +44,7 @@ static conf_log_map_t *this_logmap = 0;
 static char *_addr = NULL;
 static int _port = -1;
 
+const char *_str = NULL;
 
 #define ERROR_BUFFER_SIZE       512 /*!< \brief Error buffer size. */
 extern int cf_get_lineno(void *scanner);
@@ -178,10 +165,6 @@ void dump_note(const char *format, ...)
 	dump_value("\n");
 }
 
-static void conf_acl_item(void *scanner, char *item)
-{
-}
-
 %}
 
 %pure-parser
@@ -194,7 +177,6 @@ static void conf_acl_item(void *scanner, char *item)
 		char *t;
 		long i;
 		size_t l;
-		dnssec_tsig_algorithm_t alg;
 	} tok;
 }
 
@@ -426,29 +408,24 @@ groups:
  ;
 
 zone_acl_start:
-   XFR_IN {
-      this_list = &this_zone->acl.xfr_in;
+   XFR_IN { dump_name(C_MASTER);
    }
- | XFR_OUT {
-      this_list = &this_zone->acl.xfr_out;
+ | XFR_OUT { dump_name(C_ACL);
    }
- | NOTIFY_IN {
-      this_list = &this_zone->acl.notify_in;
+ | NOTIFY_IN { dump_name(C_ACL);
    }
- | NOTIFY_OUT {
-      this_list = &this_zone->acl.notify_out;
+ | NOTIFY_OUT { dump_name(C_NOTIFY);
    }
- | UPDATE_IN {
-      this_list = &this_zone->acl.update_in;
+ | UPDATE_IN { dump_name(C_ACL);
  }
  ;
 
 zone_acl_item:
- | TEXT { conf_acl_item(scanner, $1.t); }
- | LOG_SRC  { conf_acl_item(scanner, strdup($1.t)); }
- | LOG  { conf_acl_item(scanner, strdup($1.t)); }
- | LOG_LEVEL  { conf_acl_item(scanner, strdup($1.t)); }
- | CONTROL    { conf_acl_item(scanner, strdup($1.t)); }
+ | TEXT { dump_value("%s\n", $1.t); }
+ | LOG_SRC  { dump_value("%s\n", $1.t); }
+ | LOG  { dump_value("%s\n", $1.t); }
+ | LOG_LEVEL  { dump_value("%s\n", $1.t); }
+ | CONTROL    { dump_value("%s\n", $1.t); }
  ;
 
 zone_acl_list:
@@ -537,40 +514,27 @@ zones:
    query_genmodule_list '}'
  ;
 
-log_prios_start: {
-  this_logmap = malloc(sizeof(conf_log_map_t));
-  this_logmap->source = 0;
-  this_logmap->prios = 0;
-  add_tail(&this_log->map, &this_logmap->n);
-}
-;
-
 log_prios:
-   log_prios_start
- | log_prios LOG_LEVEL ',' { this_logmap->prios |= $2.i;
-	cf_warning(scanner, "multiple log severities are deprecated, "
-	                    "using the least serious one");
- }
- | log_prios LOG_LEVEL ';' { this_logmap->prios |= $2.i; }
+ | log_prios LOG_LEVEL ',' { if (_str == NULL) _str = $2.t; }
+ | log_prios LOG_LEVEL ';' { if (_str == NULL) _str = $2.t; }
  ;
 
 log_src:
- | log_src LOG_SRC log_prios {
-     this_logmap->source = $2.i;
-     this_logmap = 0;
+ | log_src LOG_SRC {
+     dump_name($2.t);
+     _str = NULL;
+   }
+   log_prios {
+     dump_value("%s\n", _str);
    }
  ;
 
-log_dest: LOG_DEST {
-}
+log_dest:
+   LOG_DEST { dump_id(C_TO, $1.t); }
 ;
 
-log_file: FILENAME TEXT {
-}
-;
-
-log_end: {
-}
+log_file:
+   FILENAME TEXT { dump_id(C_TO, $2.t); /*quote*/}
 ;
 
 log_start:
@@ -578,7 +542,9 @@ log_start:
  | log_start log_file '{' log_src '}'
  ;
 
-log: LOG { } '{' log_start log_end
+log:
+   LOG '{'				{ dump_section(C_LOG); }
+   log_start
  ;
 
 ctl_listen_start:
