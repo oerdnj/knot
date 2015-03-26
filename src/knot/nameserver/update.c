@@ -31,132 +31,28 @@
 #include "knot/server/tcp-handler.h"
 #include "knot/server/udp-handler.h"
 #include "knot/nameserver/capture.h"
-#include "libknot/dnssec/random.h"
 #include "libknot/processing/requestor.h"
+#include "dnssec/random.h"
 
 /* UPDATE-specific logging (internal, expects 'qdata' variable set). */
 #define UPDATE_LOG(severity, msg...) \
 	QUERY_LOG(severity, qdata, "DDNS", msg)
 
-static void init_qdata_from_request(struct query_data *qdata,
-                                    const zone_t *zone,
-                                    struct knot_request *req,
-                                    struct process_query_param *param)
+static int init_qdata_from_request(struct query_data *qdata,
+                                   const zone_t *zone,
+                                   struct knot_request *req,
+                                   struct process_query_param *param)
 {
-	memset(qdata, 0, sizeof(*qdata));
-	qdata->param = param;
-	qdata->query = req->query;
-	qdata->zone = zone;
-	qdata->sign = req->sign;
-}
-
-static int sign_changeset(zone_update_t *up)
-{
-#warning figure this out
-//	const zone_contents_t *cont = up->zone->contents;
-//	const knot_dname_t *zone_name = up->zone->contents->apex->owner;
-
-//	// Keep the original serial
-//	knot_update_serial_t soa_up = KNOT_SOA_SERIAL_KEEP;
-//#warning use API for this
-//	uint32_t new_serial = zone_contents_serial(cont);
-
-//	// Init needed structures
-//	knot_zone_keys_t zone_keys;
-//	knot_init_zone_keys(&zone_keys);
-//	knot_dnssec_policy_t policy = { '\0' };
-//	int ret = init_dnssec_structs(cont, up->zone->conf, &zone_keys, &policy,
-//	                              soa_up, false);
-//	if (ret != KNOT_EOK) {
-//		return ret;
-//	}
-
-//	// Sign added and removed RRSets in changeset
-//	ret = knot_zone_sign_changeset(zone, in_ch, out_ch,
-//	                               &zone_keys, &policy);
-//	if (ret != KNOT_EOK) {
-//		log_zone_error(zone_name, "DNSSEC, failed to sign changeset (%s)",
-//		               knot_strerror(ret));
-//		knot_free_zone_keys(&zone_keys);
-//		return ret;
-//	}
-
-//	// Create NSEC(3) chain
-//	ret = knot_zone_create_nsec_chain(zone, out_ch, &zone_keys, &policy);
-//	if (ret != KNOT_EOK) {
-//		log_zone_error(zone_name, "DNSSEC, failed to create NSEC(3) chain (%s)",
-//		               knot_strerror(ret));
-//		knot_free_zone_keys(&zone_keys);
-//		return ret;
-//	}
-
-//	// Sign added NSEC(3)
-//	ret = knot_zone_sign_nsecs_in_changeset(&zone_keys, &policy,
-//	                                        out_ch);
-//	if (ret != KNOT_EOK) {
-//		log_zone_error(zone_name, "DNSSEC, failed to sign changeset (%s)",
-//		               knot_strerror(ret));
-//		knot_free_zone_keys(&zone_keys);
-//		return ret;
-//	}
-
-//	// Update SOA RRSIGs
-//	knot_rrset_t soa = node_rrset(zone->apex, KNOT_RRTYPE_SOA);
-//	knot_rrset_t rrsigs = node_rrset(zone->apex, KNOT_RRTYPE_RRSIG);
-//	ret = knot_zone_sign_update_soa(&soa, &rrsigs, &zone_keys, &policy,
-//	                                new_serial, out_ch);
-//	if (ret != KNOT_EOK) {
-//		log_zone_error(zone_name, "DNSSEC, failed to sign SOA record (%s)",
-//		               knot_strerror(ret));
-//		knot_free_zone_keys(&zone_keys);
-//		return ret;
-//	}
-
-//	knot_free_zone_keys(&zone_keys);
-
-//	*refresh_at = policy.refresh_before; // only new signatures are made
-
-//	return KNOT_EOK;
-}
-
-static bool apex_rr_changed(zone_update_t *up, uint16_t type)
-{
-#warning get nodes and compare
-//	knot_rrset_t old_rr = node_rrset(old_contents->apex, type);
-//	knot_rrset_t new_rr = node_rrset(new_contents->apex, type);
-
-//	return !knot_rrset_equal(&old_rr, &new_rr, KNOT_RRSET_COMPARE_WHOLE);
-}
-
-static int sign_update(zone_update_t *up)
-{
-	/*
-	 * Check if the UPDATE changed DNSKEYs or NSEC3PARAM.
-	 * If so, we have to sign the whole zone.
-	 */
-	int ret = KNOT_EOK;
-	uint32_t refresh_at = 0;
-	if (apex_rr_changed(up, KNOT_RRTYPE_DNSKEY) ||
-	    apex_rr_changed(up, KNOT_RRTYPE_NSEC3PARAM)) {
-		assert(0);
-//		ret = dnssec_zone_sign(new_contents, zone->conf,
-//		                            sec_ch, KNOT_SOA_SERIAL_KEEP,
-//		                            &refresh_at);
-	} else {
-		// Sign the created changeset
-		ret = dnssec_sign_changeset(up, &refresh_at);
-	}
+	zone_read_t zr;
+	int ret = zone_read_from_zone(&zr, (zone_t *)zone);
 	if (ret != KNOT_EOK) {
 		return ret;
 	}
 
-	// Plan next zone resign.
-	assert(0);
-//	const time_t resign_time = zone_events_get_time(zone, ZONE_EVENT_DNSSEC);
-//	if (time(NULL) + refresh_at < resign_time) {
-		assert(0);
-//		zone_events_schedule(zone, ZONE_EVENT_DNSSEC, refresh_at);
-//	}
+	memset(qdata, 0, sizeof(*qdata));
+	qdata->param = param;
+	qdata->query = req->query;
+	qdata->sign = req->sign;
 
 	return KNOT_EOK;
 }
@@ -219,12 +115,15 @@ static int process_bulk(zone_t *zone, list_t *requests, zone_update_t *up)
 		struct process_query_param param = { 0 };
 		param.remote = &req->remote;
 		struct query_data qdata;
-		init_qdata_from_request(&qdata, zone, req, &param);
+		int ret = init_qdata_from_request(&qdata, zone, req, &param);
+		if (ret != KNOT_EOK) {
+			return ret;
+		}
 
 		store_original_qname(&qdata, req->query);
 		process_query_qname_case_lower(req->query);
 
-		int ret = check_prereqs(req, zone, up, &qdata);
+		ret = check_prereqs(req, zone, up, &qdata);
 		if (ret != KNOT_EOK) {
 			// Skip updates with failed prereqs.
 			continue;
@@ -335,7 +234,7 @@ static int forward_request(zone_t *zone, struct knot_request *request)
 		knot_wire_set_rcode(request->resp->wire, KNOT_RCODE_SERVFAIL);
 		return ret;
 	}
-	knot_wire_set_id(query->wire, knot_random_uint16_t());
+	knot_wire_set_id(query->wire, dnssec_random_uint16_t());
 	knot_tsig_append(query->wire, &query->size, query->max_size, query->tsig_rr);
 
 	/* Create a request. */
@@ -389,7 +288,7 @@ static void forward_requests(zone_t *zone, list_t *requests)
 static bool update_tsig_check(struct query_data *qdata, struct knot_request *req)
 {
 	// Check that ACL is still valid.
-	if (!process_query_acl_check(&qdata->zone->conf->acl.update_in, qdata)) {
+	if (!process_query_acl_check(&qdata->zr.zone->conf->acl.update_in, qdata)) {
 		UPDATE_LOG(LOG_WARNING, "ACL check failed");
 		knot_wire_set_rcode(req->resp->wire, qdata->rcode);
 		return false;
@@ -495,7 +394,7 @@ int update_query_process(knot_pkt_t *pkt, struct query_data *qdata)
 	NS_NEED_ZONE(qdata, KNOT_RCODE_NOTAUTH);
 
 	/* Need valid transaction security. */
-	zone_t *zone = (zone_t *)qdata->zone;
+	zone_t *zone = (zone_t *)qdata->zr.zone;
 	NS_NEED_AUTH(&zone->conf->acl.update_in, qdata);
 	/* Check expiration. */
 	NS_NEED_ZONE_CONTENTS(qdata, KNOT_RCODE_SERVFAIL);
