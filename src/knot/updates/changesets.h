@@ -45,6 +45,7 @@ typedef struct {
 	list_t iters;             /*!< List of pending zone iterators. */
 	const zone_node_t *node;  /*!< Current zone node. */
 	uint16_t node_pos;        /*!< Position in node. */
+	const namedb_api_t *api;  /*!< Backend API. */
 } changeset_iter_t;
 
 /*!
