@@ -1,4 +1,4 @@
-\/*  Copyright (C) 2013 CZ.NIC, z.s.p.o. <knot-dns@labs.nic.cz>
+/*  Copyright (C) 2013 CZ.NIC, z.s.p.o. <knot-dns@labs.nic.cz>
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -29,7 +29,7 @@
 #pragma once
 
 #include "knot/zone/zone.h"
-#include "knot/updates/changesets.h"
+#include "knot/updates/zone-update.h"
 
 enum zone_sign_flags {
 	ZONE_SIGN_NONE = 0,
@@ -39,6 +39,11 @@ enum zone_sign_flags {
 
 typedef enum zone_sign_flags zone_sign_flags_t;
 
-int dnssec_zone_sign(zone_update_t *up, uint32_t *refresh_at);
+int knot_dnssec_zone_sign(zone_update_t *update, const conf_zone_t *config,
+                          zone_sign_flags_t flags, uint32_t *refresh_at);
+
+int knot_dnssec_sign_changeset(zone_update_t *update,
+                               conf_zone_t *config,
+                               uint32_t *refresh_at);
 
 /*! @} */

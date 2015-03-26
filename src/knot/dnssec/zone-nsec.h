@@ -42,7 +42,7 @@
  *
  * \return NSEC3 is enabled.
  */
-bool knot_is_nsec3_enabled(const zone_contents_t *zone);
+bool knot_is_nsec3_enabled(zone_update_t *update);
 
 /*!
  * \brief Create NSEC3 owner name from hash and zone apex.

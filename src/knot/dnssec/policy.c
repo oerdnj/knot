@@ -18,37 +18,41 @@
 
 #include "knot/conf/conf.h"
 #include "knot/dnssec/context.h"
-#include "knot/zone/contents.h"
+#include "knot/updates/zone-update.h"
 #include "libknot/rrtype/soa.h"
 
 #define MINIMAL_RRSIG_LIFETIME (3 * 60 * 60)
 #define DEFAULT_RRSIG_LIFETIME (30 * 24 * 60 * 60)
 
-static uint32_t zone_soa_min_ttl(const zone_contents_t *zone)
+static uint32_t zone_soa_min_ttl(zone_update_t *update)
 {
-	knot_rrset_t soa = node_rrset(zone->apex, KNOT_RRTYPE_SOA);
+	const zone_node_t *apex = zone_update_get_apex(update);
+	assert(apex);
+	knot_rrset_t soa = node_rrset(apex, KNOT_RRTYPE_SOA);
 	return knot_soa_minimum(&soa.rrs);
 }
 
-static uint32_t zone_soa_ttl(const zone_contents_t *zone)
+static uint32_t zone_soa_ttl(zone_update_t *update)
 {
-	knot_rrset_t soa = node_rrset(zone->apex, KNOT_RRTYPE_SOA);
+	const zone_node_t *apex = zone_update_get_apex(update);
+	assert(apex);
+	knot_rrset_t soa = node_rrset(apex, KNOT_RRTYPE_SOA);
 	return knot_rrset_ttl(&soa);
 }
 
 void update_policy_from_zone(dnssec_kasp_policy_t *policy,
-                             const zone_contents_t *zone)
+                             zone_update_t *update)
 {
 	assert(policy);
-	assert(zone);
+	assert(update);
 
-	policy->soa_minimal_ttl = zone_soa_min_ttl(zone);
-	policy->dnskey_ttl = zone_soa_ttl(zone);
+	policy->soa_minimal_ttl = zone_soa_min_ttl(update);
+	policy->dnskey_ttl = zone_soa_ttl(update);
 	policy->zone_maximal_ttl = 0; // TODO
 }
 
 void set_default_policy(dnssec_kasp_policy_t *policy, const conf_zone_t *config,
-                        const zone_contents_t *zone)
+                        zone_update_t *update)
 {
 	if (config->sig_lifetime <= 0) {
 		policy->rrsig_lifetime = DEFAULT_RRSIG_LIFETIME;
@@ -61,5 +65,5 @@ void set_default_policy(dnssec_kasp_policy_t *policy, const conf_zone_t *config,
 	policy->algorithm = 0;
 	policy->propagation_delay = 0;
 
-	update_policy_from_zone(policy, zone);
+	update_policy_from_zone(policy, update);
 }

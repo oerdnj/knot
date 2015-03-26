@@ -34,6 +34,19 @@
 #include "knot/zone/contents.h"
 #include "knot/zone/zone-diff.h"
 
+static int remove_rrsets_from(const zone_node_t *node, zone_update_t *update)
+{
+	for (uint16_t i = 0; i < node->rrset_count; ++i) {
+		const knot_rrset_t rr = node_rrset_at(node, i);
+		int ret = zone_update_remove(update, &rr);
+		if (ret != KNOT_EOK) {
+			return ret;
+		}
+	}
+
+	return KNOT_EOK;
+}
+
 /*!
  * \brief Deletes NSEC3 chain if NSEC should be used.
  *
@@ -41,27 +54,32 @@
  * \param changeset  Changeset to be used.
  * \return KNOT_E*
  */
-static int delete_nsec3_chain(const zone_contents_t *zone,
-                              changeset_t *changeset)
+static int delete_nsec3_chain(zone_update_t *update)
 {
-	assert(zone);
-	assert(changeset);
+	assert(update);
 
-	if (zone_tree_is_empty(zone->nsec3_nodes)) {
-		return KNOT_EOK;
+	zone_update_iter_t itt;
+	const bool read_only = false;
+	int result = zone_update_iter_nsec3(&itt, update, read_only);
+	if (result != KNOT_EOK) {
+		return result;
+	}
+	const zone_node_t *n = zone_update_iter_val(&itt);
+	while (n) {
+		result = remove_rrsets_from(n, update);
+		if (result == KNOT_EOK) {
+			result = zone_update_iter_next(&itt);
+		}
+		if (result != KNOT_EOK) {
+			break;
+		}
 	}
 
-	zone_tree_t *empty_tree = zone_tree_create();
-	if (!empty_tree) {
-		return KNOT_ENOMEM;
+	if (result != KNOT_EOK) {
+		zone_update_iter_finish(&itt);
+		return result;
 	}
-
-	int result = zone_tree_add_diff(zone->nsec3_nodes, empty_tree,
-	                                     changeset);
-
-	zone_tree_free(&empty_tree);
-
-	return result;
+	return zone_update_iter_finish(&itt);
 }
 
 /* - helper functions ------------------------------------------------------ */
@@ -69,9 +87,9 @@ static int delete_nsec3_chain(const zone_contents_t *zone,
 /*!
  * \brief Check if NSEC3 is enabled for given zone.
  */
-bool knot_is_nsec3_enabled(const zone_update_t *update)
+bool knot_is_nsec3_enabled(zone_update_t *update)
 {
-	const zone_node_t *apex = zone_update_apex(update);
+	const zone_node_t *apex = zone_update_get_apex(update);
 	return node_rrtype_exists(apex, KNOT_RRTYPE_NSEC3PARAM);
 }
 
@@ -79,79 +97,13 @@ bool knot_is_nsec3_enabled(const zone_update_t *update)
  * \brief Get minimum TTL from zone SOA.
  * \note Value should be used for NSEC records.
  */
-static uint32_t const get_zone_soa_min_ttl(const zone_update_t *update)
+static uint32_t const get_zone_soa_min_ttl(zone_update_t *update)
 {
 	assert(update);
-
 	const zone_node_t *apex = zone_update_get_apex(update);
 	const knot_rdataset_t *soa = node_rdataset(apex, KNOT_RRTYPE_SOA);
 
 	return knot_soa_minimum(soa);
-}
-
-/*!
- * \brief Finds a node with the same owner as the given NSEC3 RRSet and marks it
- *        as 'removed'.
- *
- * \param data NSEC3 tree to search for the node in. (type zone_tree_t *).
- * \param rrset RRSet whose owner will be sought in the zone tree. non-NSEC3
- *              RRSets are ignored.
- *
- * This function is constructed as a callback for the knot_changeset_apply() f
- * function.
- */
-static int mark_nsec3(knot_rrset_t *rrset, zone_tree_t *nsec3s)
-{
-	assert(rrset != NULL);
-	assert(nsec3s != NULL);
-
-	zone_node_t *node = NULL;
-	int ret;
-
-	if (rrset->type == KNOT_RRTYPE_NSEC3) {
-		// Find the name in the NSEC3 tree and mark the node
-		ret = zone_tree_get(nsec3s, rrset->owner,
-		                         &node);
-		if (ret != KNOT_EOK) {
-			return ret;
-		}
-
-		if (node != NULL) {
-			node->flags |= NODE_FLAGS_REMOVED_NSEC;
-		}
-	}
-
-	return KNOT_EOK;
-}
-
-/*!
- * \brief Marks all NSEC3 nodes in zone from which RRSets are to be removed.
- *
- * For each NSEC3 RRSet in the changeset finds its node and marks it with the
- * 'removed' flag.
- */
-static int mark_removed_nsec3(changeset_t *out_ch,
-                              const zone_contents_t *zone)
-{
-	if (zone_tree_is_empty(zone->nsec3_nodes)) {
-		return KNOT_EOK;
-	}
-
-	changeset_iter_t itt;
-	changeset_iter_rem(&itt, out_ch, false);
-	
-	knot_rrset_t rr = changeset_iter_next(&itt);
-	while (!knot_rrset_empty(&rr)) {
-		int ret = mark_nsec3(&rr, zone->nsec3_nodes);
-		if (ret != KNOT_EOK) {
-			changeset_iter_clear(&itt);
-			return ret;
-		}
-		rr = changeset_iter_next(&itt);
-	}
-	changeset_iter_clear(&itt);
-	
-	return KNOT_EOK;
 }
 
 /* - public API ------------------------------------------------------------ */
@@ -188,7 +140,7 @@ knot_dname_t *knot_create_nsec3_owner(const knot_dname_t *owner,
 		.flags = knot_nsec3param_flags(params, 0),
 		.iterations = knot_nsec3param_iterations(params, 0),
 		.salt = {
-			.data = knot_nsec3param_salt(params, 0),
+			.data = (uint8_t *)knot_nsec3param_salt(params, 0),
 			.size = knot_nsec3param_salt_length(params, 0)
 		}
 	};
@@ -259,30 +211,20 @@ int knot_zone_create_nsec_chain(zone_update_t *update,
 		return KNOT_EINVAL;
 	}
 
-	const uint32_t nsec_ttl = get_zone_soa_min_ttl(update, &nsec_ttl);
+	const uint32_t nsec_ttl = get_zone_soa_min_ttl(update);
 
 	int result;
-	bool nsec3_enabled = knot_is_nsec3_enabled(zone);
+	const bool nsec3_enabled = knot_is_nsec3_enabled(update);
 
 	if (nsec3_enabled) {
-		result = knot_nsec3_create_chain(zone, nsec_ttl, changeset);
+		result = knot_nsec3_create_chain(update, nsec_ttl);
 	} else {
-		result = knot_nsec_create_chain(zone, nsec_ttl, changeset);
+		result = knot_nsec_create_chain(update, nsec_ttl);
 	}
 
 	if (result == KNOT_EOK && !nsec3_enabled) {
-		result = delete_nsec3_chain(zone, changeset);
+		result = delete_nsec3_chain(update);
 	}
 
-	if (result == KNOT_EOK) {
-		// Mark removed NSEC3 nodes, so that they are not signed later
-		result = mark_removed_nsec3(changeset, zone);
-	}
-
-	if (result != KNOT_EOK) {
-		return result;
-	}
-
-	// Sign newly created records right away
-	return knot_zone_sign_nsecs_in_changeset(zone_keys, dnssec_ctx, changeset);
+	return result;
 }

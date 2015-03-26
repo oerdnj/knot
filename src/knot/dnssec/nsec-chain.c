@@ -89,12 +89,12 @@ static int connect_nsec_nodes(const zone_node_t *a, const zone_node_t *b,
 	assert(b);
 	assert(data);
 
-	if (b->rrset_count == 0 || b->flags & NODE_FLAGS_NONAUTH) {
+	zone_update_t *update = data->update;
+	if (b->rrset_count == 0 || zone_update_node_is_nonauth(update, b->owner)) {
 		return NSEC_NODE_SKIP;
 	}
 
 	int ret = KNOT_EOK;
-	zone_update_t *update = data->update;
 
 	/*!
 	 * If the node has no other RRSets than NSEC (and possibly RRSIGs),

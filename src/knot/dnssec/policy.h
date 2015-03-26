@@ -18,16 +18,16 @@
 
 #include "knot/conf/conf.h"
 #include "knot/dnssec/context.h"
-#include "knot/zone/contents.h"
+#include "knot/updates/zone-update.h"
 
 /*!
  * \brief Update policy parameters depending on zone content.
  */
 void update_policy_from_zone(dnssec_kasp_policy_t *policy,
-                             const zone_contents_t *zone);
+                             zone_update_t *zone);
 
 /*!
  * \brief Set default DNSSEC policy for zone without assigned policy.
  */
 void set_default_policy(dnssec_kasp_policy_t *policy, const conf_zone_t *config,
-                        const zone_contents_t *zone);
+                        zone_update_t *zone);

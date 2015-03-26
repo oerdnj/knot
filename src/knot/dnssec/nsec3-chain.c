@@ -91,17 +91,13 @@ static bool are_nsec3_nodes_equal(const zone_node_t *a, const zone_node_t *b)
  */
 static bool node_should_be_signed_nsec3(const zone_node_t *n)
 {
-	for (int i = 0; i < n->rrset_count; i++) {
+	for (uint16_t i = 0; i < n->rrset_count; i++) {
 		knot_rrset_t rrset = node_rrset_at(n, i);
 		assert(rrset.type != KNOT_RRTYPE_NSEC);
 		if (rrset.type == KNOT_RRTYPE_RRSIG) {
 			continue;
 		}
-		bool should_sign = false;
-		int ret = knot_zone_sign_rr_should_be_signed(n, &rrset,
-		                                             &should_sign);
-		assert(ret == KNOT_EOK); // No tree inside the function, no fail
-		if (should_sign) {
+		if (knot_zone_sign_rr_should_be_signed(n, &rrset)) {
 			return true;
 		}
 	}
@@ -111,32 +107,30 @@ static bool node_should_be_signed_nsec3(const zone_node_t *n)
 
 /* - RRSIGs handling for NSEC3 ---------------------------------------------- */
 
-/*!
- * \brief Shallow copy NSEC3 signatures from the one node to the second one.
- *        Just sets the pointer, needed only for comparison.
- */
-static int shallow_copy_signature(const zone_node_t *from, zone_node_t *to)
+static int add_node_to_update(zone_update_t *update, const zone_node_t *node)
 {
-	assert(valid_nsec3_node(from));
-	assert(valid_nsec3_node(to));
-
-	knot_rrset_t from_sig = node_rrset(from, KNOT_RRTYPE_RRSIG);
-	if (knot_rrset_empty(&from_sig)) {
-		return KNOT_EOK;
+	for (uint16_t i = 0; i < node->rrset_count; ++i) {
+		knot_rrset_t rr = node_rrset_at(node, i);
+		int result = zone_update_add(update, &rr);
+		if (result != KNOT_EOK) {
+			return result;
+		}
 	}
-	return node_add_rrset(to, &from_sig, NULL);
+
+	return KNOT_EOK;
 }
 
 /*!
  * \brief Reuse signatures by shallow copying them from one tree to another.
  */
-static int copy_signatures(zone_update_t *from, zone_tree_t *to)
+static int copy_signatures(zone_update_t *from, zone_update_t *to)
 {
 	assert(from);
 	assert(to);
 
 	zone_update_iter_t it;
-	int ret = zone_update_iter_nsec3(&it, from);
+	const bool read_only = false;
+	int ret = zone_update_iter_nsec3(&it, from, read_only);
 	if (ret != KNOT_EOK) {
 		return ret;
 	}
@@ -149,10 +143,11 @@ static int copy_signatures(zone_update_t *from, zone_tree_t *to)
 
 	const zone_node_t *node_from = zone_update_iter_val(&it);
 	while (node_from) {
-		zone_node_t *node_to = zone_tree_get(to, node_from->owner);
+		const zone_node_t *node_to = zone_update_get_node(to, node_from->owner, KNOT_RRTYPE_NSEC3);
 		if (node_to) {
 			if (are_nsec3_nodes_equal(node_from, node_to)) {
-				ret = shallow_copy_signature(node_from, node_to);
+				knot_rrset_t sig = node_rrset(node_from, KNOT_RRTYPE_RRSIG);
+				ret = zone_update_add(to, &sig);
 				if (ret != KNOT_EOK) {
 					break;
 				}
@@ -166,43 +161,6 @@ static int copy_signatures(zone_update_t *from, zone_tree_t *to)
 
 	zone_update_iter_finish(&it);
 	return ret;
-}
-
-/*!
- * \brief Custom NSEC3 tree free function.
- *
- */
-static int free_nsec3_tree(zone_tree_t *nodes)
-{
-	assert(nodes);
-
-	namedb_txn_t tx;
-	int ret = nodes->api->txn_begin(nodes->db, &tx, 0);
-	if (ret != KNOT_EOK) {
-		return ret;
-	}
-
-	namedb_iter_t *it = nodes->api->iter_begin(&tx, 0);
-	if (it == NULL) {
-		return ret;
-	}
-
-	while (it) {
-		namedb_val_t val;
-		nodes->api->iter_val(it, &val);
-		zone_node_t *node = (zone_node_t *)val.data;
-		// newly allocated NSEC3 nodes
-		knot_rdataset_t *nsec3 = node_rdataset(node, KNOT_RRTYPE_NSEC3);
-		knot_rdataset_t *rrsig = node_rdataset(node, KNOT_RRTYPE_RRSIG);
-		knot_rdataset_clear(nsec3, NULL);
-		knot_rdataset_clear(rrsig, NULL);
-		node_free(&node, NULL);
-		it = nodes->api->iter_next(&it);
-	}
-
-	nodes->api->txn_abort(&tx);
-	zone_tree_clear(nodes);
-	return KNOT_EOK;
 }
 
 /* - NSEC3 nodes construction ----------------------------------------------- */
@@ -263,13 +221,13 @@ static void nsec3_fill_rdata(uint8_t *rdata, const knot_rdataset_t *params,
 /*!
  * \brief Checks if NSEC3 should be generated for this node.
  *
- * \retval true if the node has no children and contains no RRSets or only
- *         RRSIGs and NSECs.
+ * \retval true if the node has no children and is authoritative.
  * \retval false otherwise.
  */
 static bool generate_nsec3(zone_update_t *update, const zone_node_t *node)
 {
-	return !(node->flags & NODE_FLAGS_NONAUTH) && zone_update_has_children(update, node->owner);
+	return (!zone_update_node_is_nonauth(update, node->owner))
+	        && zone_update_has_children(update, node->owner);
 }
 
 /*!
@@ -454,7 +412,7 @@ static int connect_nsec3_nodes(const zone_node_t *a, const zone_node_t *b,
  * \return Error code, KNOT_EOK if successful.
  */
 static int create_nsec3_nodes(zone_update_t *update, uint32_t ttl,
-                              zone_tree_t *nsec3_nodes)
+                              zone_update_t *nsec3_nodes)
 {
 	assert(update);
 	assert(nsec3_nodes);
@@ -483,7 +441,9 @@ static int create_nsec3_nodes(zone_update_t *update, uint32_t ttl,
 				break;
 			}
 
-			result = zone_tree_insert(nsec3_nodes, nsec3_node);
+			result = add_node_to_update(update, nsec3_node);
+			node_free_rrsets(nsec3_node, NULL);
+			node_free(&nsec3_node, NULL);
 			if (result != KNOT_EOK) {
 				break;
 			}
@@ -529,12 +489,64 @@ static int remove_nsecs(zone_update_t *update)
 	return zone_update_iter_finish(&it);
 }
 
-static int create_chain_from_tree(zone_tree_t *nsec3_nodes, zone_update_t *update) {
-	// Create fake zone update so that we can reuse the API.
-	zone_contents_t contents = { .nsec3_nodes = nsec3_nodes };
-	zone_t zone = { .contents = &contents };
-	zone_update_t fake_up = { .zone = &zone, .flags = UPDATE_INCREMENTAL, .change = update->change };
-	return knot_nsec_chain_iterate_create(&fake_up, connect_nsec3_nodes, NULL);
+static int clear_nsec3_node(zone_update_t *update,
+                            const zone_node_t *nsec3_node)
+{
+	knot_rrset_t to_remove[2] = { node_rrset(nsec3_node, KNOT_RRTYPE_NSEC3),
+	                              node_rrset(nsec3_node, KNOT_RRTYPE_RRSIG) };
+	for (size_t i = 0; i < 2; ++i) {
+		knot_rrset_t rr = to_remove[i];
+		if (!knot_rrset_empty(&rr)) {
+			int ret = zone_update_remove(update, &rr);
+			if (ret != KNOT_EOK) {
+				return ret;
+			}
+		}
+	}
+	
+	return KNOT_EOK;
+}
+
+static int update_diff_nsec3(zone_update_t *old_zone, zone_update_t *nsec3_nodes)
+{
+	assert(nsec3_nodes->flags & UPDATE_FULL);
+	zone_update_iter_t it;
+	const bool read_only = true;
+	int ret = zone_update_iter_nsec3(&it, old_zone, read_only);
+	if (ret != KNOT_EOK) {
+		return ret;
+	}
+
+	const zone_node_t *nsec3_node = zone_update_iter_val(&it);
+	while (nsec3_node) {
+		const zone_node_t *old_node = zone_update_get_node(old_zone, nsec3_node->owner, KNOT_RRTYPE_NSEC3);
+		if (old_node) {
+			if (!are_nsec3_nodes_equal(old_node, nsec3_node)) {
+				// Delete RRSIGs and NSEC3s from the old node.
+				int ret = clear_nsec3_node(old_zone, old_node);
+				if (ret != KNOT_EOK) {
+					zone_update_iter_finish(&it);
+					return ret;
+				}
+				// Add created NSEC3 node.
+				ret = add_node_to_update(old_zone, nsec3_node);
+				if (ret != KNOT_EOK) {
+					zone_update_iter_finish(&it);
+					return ret;
+				}
+			}
+		} else {
+			add_node_to_update(old_zone, nsec3_node);
+		}
+
+		int ret = zone_update_iter_next(&it);
+		if (ret != KNOT_EOK) {
+			zone_update_iter_finish(&it);
+			return ret;
+		}
+	}
+
+	return zone_update_iter_finish(&it);
 }
 
 /* - Public API ------------------------------------------------------------- */
@@ -552,35 +564,32 @@ int knot_nsec3_create_chain(zone_update_t *update, uint32_t ttl)
 		return result;
 	}
 
-	zone_tree_t nsec3_nodes;
-	result = zone_tree_init(&nsec3_nodes, namedb_trie_api(), NULL);
+	zone_update_t nsec3_nodes;
+	result = zone_update_init(&nsec3_nodes, update->zone, UPDATE_FULL);
 	if (result != KNOT_EOK) {
 		return result;
 	}
 
 	result = create_nsec3_nodes(update, ttl, &nsec3_nodes);
 	if (result != KNOT_EOK) {
-		free_nsec3_tree(&nsec3_nodes);
+		zone_update_clear(&nsec3_nodes);
 		return result;
 	}
 
-	result = create_chain_from_tree(&nsec3_nodes, update);
+	result = knot_nsec_chain_iterate_create(&nsec3_nodes, connect_nsec3_nodes, NULL);
 	if (result != KNOT_EOK) {
-		free_nsec3_tree(&nsec3_nodes);
+		zone_update_clear(&nsec3_nodes);
 		return result;
 	}
 
 	result = copy_signatures(update, &nsec3_nodes);
 	if (result != KNOT_EOK) {
-		free_nsec3_tree(&nsec3_nodes);
+		zone_update_clear(&nsec3_nodes);
 		return result;
 	}
 
-#warning DIFF against the update, not two trees.
-//	result = zone_tree_add_diff(zone->nsec3_nodes, nsec3_nodes,
-//	                                 changeset);
-
-	free_nsec3_tree(&nsec3_nodes);
+	result = update_diff_nsec3(update, &nsec3_nodes);
+	zone_update_clear(&nsec3_nodes);
 
 	return result;
 }

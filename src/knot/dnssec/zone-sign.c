@@ -529,7 +529,7 @@ static int sign_node(const zone_node_t *node, const zone_keyset_t *zone_keys,
 		return KNOT_EOK;
 	}
 
-	if (node->flags & NODE_FLAGS_NONAUTH) {
+	if (zone_update_node_is_nonauth(update, node->owner)) {
 		return KNOT_EOK;
 	}
 
@@ -542,7 +542,7 @@ static int sign_zone_iter(zone_update_iter_t *itt, const zone_keyset_t *zone_key
 {
 	const zone_node_t *node = zone_update_iter_val(itt);
 	while (node) {
-		int ret = sign_node(node, zone_keys, dnssec_ctx, update, expires_at);
+		int ret = sign_node(node, zone_keys, dnssec_ctx, update, (time_t *)expires_at);
 		if (ret != KNOT_EOK) {
 			return ret;
 		}
@@ -953,7 +953,8 @@ static int update_dnskeys(zone_update_t *update,
 static int sign_changeset_wrap(knot_rrset_t *chg_rrset, changeset_signing_data_t *args)
 {
 	// Find RR's node in zone, find out if we need to sign this RR
-	const zone_node_t *node = zone_update_get_node(args->update, chg_rrset->owner);
+	const uint16_t qtype = zone_contents_rrset_is_nsec3rel(chg_rrset) ? KNOT_RRTYPE_NSEC3 : KNOT_RRTYPE_ANY;
+	const zone_node_t *node = zone_update_get_node(args->update, chg_rrset->owner, qtype);
 	// If node is not in zone, all its RRSIGs were dropped - no-op
 	if (node == NULL) {
 		return KNOT_EOK;
@@ -1100,7 +1101,6 @@ int knot_zone_sign_changeset(zone_update_t *update,
 		.update = update
 	};
 
-#warning direct access to changes, might be ok, also, this signs some RRSets twice
 	changeset_iter_t itt;
 	changeset_iter_all(&itt, &update->change, false);
 
@@ -1110,38 +1110,6 @@ int knot_zone_sign_changeset(zone_update_t *update,
 		if (ret != KNOT_EOK) {
 			changeset_iter_clear(&itt);
 			return ret;
-		}
-		rr = changeset_iter_next(&itt);
-	}
-	changeset_iter_clear(&itt);
-
-	return KNOT_EOK;
-}
-
-/*!
- * \brief Sign NSEC/NSEC3 nodes in changeset and update the changeset.
- */
-int knot_zone_sign_nsecs_in_changeset(const zone_keyset_t *zone_keys,
-                                      const kdnssec_ctx_t *dnssec_ctx,
-                                      changeset_t *changeset)
-{
-	assert(zone_keys);
-	assert(dnssec_ctx);
-	assert(changeset);
-
-	changeset_iter_t itt;
-	changeset_iter_add(&itt, changeset, false);
-
-	knot_rrset_t rr = changeset_iter_next(&itt);
-	while (!knot_rrset_empty(&rr)) {
-		if (rr.type == KNOT_RRTYPE_NSEC ||
-		    rr.type == KNOT_RRTYPE_NSEC3) {
-			int ret =  add_missing_rrsigs(&rr, NULL, zone_keys,
-			                              dnssec_ctx, changeset);
-			if (ret != KNOT_EOK) {
-				changeset_iter_clear(&itt);
-				return ret;
-			}
 		}
 		rr = changeset_iter_next(&itt);
 	}
@@ -1179,7 +1147,7 @@ bool knot_zone_sign_rr_should_be_signed(const zone_node_t *node,
 	}
 
 	// At delegation points we only want to sign NSECs and DSs
-	if ((node->flags & NODE_FLAGS_DELEG)) {
+	if (node_is_deleg(node)) {
 		if (!(rrset->type == KNOT_RRTYPE_NSEC ||
 		    rrset->type == KNOT_RRTYPE_DS)) {
 			return false;
