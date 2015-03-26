@@ -18,6 +18,7 @@
 
 #include "libknot/errcode.h"
 
+#include "libknot/internal/macros.h"
 #include "libknot/internal/namedb/namedb_trie.h"
 #include "libknot/internal/trie/hat-trie.h"
 #include "libknot/internal/mempattern.h"
@@ -35,9 +36,10 @@ static value_t *first_val(hattrie_t *t)
 	return val;
 }
 
-static int init(const char *config, namedb_t **db, mm_ctx_t *mm)
+static int init(namedb_t **db, mm_ctx_t *mm, void *opts)
 {
-	if (config != NULL || db == NULL) {
+	UNUSED(opts);
+	if (db == NULL) {
 		return KNOT_EINVAL;
 	}
 
@@ -151,11 +153,6 @@ static namedb_iter_t *iter_begin(namedb_txn_t *txn, unsigned flags)
 	return hattrie_iter_begin((hattrie_t *)txn->db, is_sorted);
 }
 
-static void iter_set_last(hattrie_iter_t *iter)
-{
-	
-}
-
 static namedb_iter_t *iter_seek(namedb_iter_t *iter, namedb_val_t *key, unsigned flags)
 {
 	assert(key == NULL);
@@ -163,14 +160,10 @@ static namedb_iter_t *iter_seek(namedb_iter_t *iter, namedb_val_t *key, unsigned
 	case NAMEDB_NOOP:
 		return iter;
 	case NAMEDB_FIRST:
-		hattrie_iter_free(iter);
-		iter = malloc(sizeof(*iter));
-		if (iter) {
-			hattrie_iter_init(iter, NULL, NULL);
-		}
+		assert(0);
 		break;
 	case NAMEDB_LAST:
-		iter_set_last(iter);
+		assert(0);
 		break;
 	case NAMEDB_NEXT:
 		hattrie_iter_next(iter);
