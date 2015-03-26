@@ -17,6 +17,7 @@
 #include <inttypes.h>
 
 #include "knot/zone/zone-dump.h"
+#include "knot/updates/zone-read.h"
 #include "libknot/descriptor.h"
 #include "knot/conf/conf.h"
 #include "libknot/libknot.h"
@@ -129,9 +130,9 @@ static int node_dump_text(zone_node_t *node, void *data)
 	return KNOT_EOK;
 }
 
-int zone_dump_text(zone_contents_t *zone, const struct sockaddr_storage *from, FILE *file)
+int zone_dump_text(zone_read_t *zr, const struct sockaddr_storage *from, FILE *file)
 {
-	if (zone == NULL || file == NULL) {
+	if (zr == NULL || file == NULL) {
 		return KNOT_EINVAL;
 	}
 
@@ -144,7 +145,7 @@ int zone_dump_text(zone_contents_t *zone, const struct sockaddr_storage *from, F
 	fprintf(file, ";; Zone dump (Knot DNS %s)\n", PACKAGE_VERSION);
 
 	// Set structure with parameters.
-	zone_node_t *apex = zone->apex;
+	zone_node_t *apex = zr->zone->contents->apex;
 	dump_params_t params;
 	params.file = file;
 	params.buf = buf;
@@ -158,33 +159,31 @@ int zone_dump_text(zone_contents_t *zone, const struct sockaddr_storage *from, F
 	// Dump standard zone records without rrsigs.
 	params.dump_rrsig = false;
 	params.dump_nsec = false;
-	ret = zone_contents_tree_apply_inorder(zone, node_dump_text, &params);
+	ret = zone_tree_apply(zr->zone->contents->nodes, node_dump_text, &params, false);
 	if (ret != KNOT_EOK) {
 		return ret;
 	}
 
 	// Dump DNSSEC signatures if secured.
-	if (zone_contents_is_signed(zone)) {
+	if (zone_contents_is_signed(zr->zone->contents)) {
 		fprintf(file, ";; DNSSEC signatures\n");
 
 		// Dump rrsig records.
 		params.dump_rrsig = true;
 		params.dump_nsec = false;
-		ret = zone_contents_tree_apply_inorder(zone, node_dump_text,
-		                                       &params);
+		ret = zone_tree_apply(zr->zone->contents->nodes, node_dump_text, &params, true);
 		if (ret != KNOT_EOK) {
 			return ret;
 		}
 	}
 
 	// Dump NSEC3 chain if available.
-	if (knot_is_nsec3_enabled(zone)) {
+	if (node_rrtype_exists(zr->zone->contents->apex, KNOT_RRTYPE_NSEC3PARAM)) {
 		fprintf(file, ";; DNSSEC NSEC3 chain\n");
 
 		params.dump_rrsig = false;
 		params.dump_nsec = true;
-		ret = zone_contents_nsec3_apply_inorder(zone, node_dump_text,
-		                                        &params);
+		ret = zone_tree_apply(zr->zone->contents->nsec3_nodes, node_dump_text, &params, true);
 		if (ret != KNOT_EOK) {
 			return ret;
 		}
@@ -193,19 +192,17 @@ int zone_dump_text(zone_contents_t *zone, const struct sockaddr_storage *from, F
 
 		params.dump_rrsig = true;
 		params.dump_nsec = false;
-		ret = zone_contents_nsec3_apply_inorder(zone, node_dump_text,
-		                                        &params);
+		ret = zone_tree_apply(zr->zone->contents->nsec3_nodes, node_dump_text, &params, true);
 		if (ret != KNOT_EOK) {
 			return ret;
 		}
-	} else if (zone_contents_is_signed(zone)) {
+	} else if (zone_contents_is_signed(zr->zone->contents)) {
 		fprintf(file, ";; DNSSEC NSEC chain\n");
 
 		// Dump nsec records.
 		params.dump_rrsig = false;
 		params.dump_nsec = true;
-		ret = zone_contents_tree_apply_inorder(zone, node_dump_text,
-		                                       &params);
+		ret = zone_tree_apply(zr->zone->contents->nodes, node_dump_text, &params, true);
 		if (ret != KNOT_EOK) {
 			return ret;
 		}

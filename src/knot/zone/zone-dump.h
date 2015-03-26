@@ -26,7 +26,7 @@
 
 #pragma once
 
-#include "knot/zone/zone.h"
+#include "knot/updates/zone-read.h"
 
 /*!
  * \brief Dumps given zone to text file.
@@ -38,6 +38,6 @@
  * \retval KNOT_EOK on success.
  * \retval < 0 if error.
  */
-int zone_dump_text(zone_contents_t *zone, const struct sockaddr_storage *from, FILE *file);
+int zone_dump_text(zone_read_t *zr, const struct sockaddr_storage *from, FILE *file);
 
 /*! @} */
