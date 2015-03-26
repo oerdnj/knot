@@ -21,6 +21,7 @@
 #include "knot/common/debug.h"
 #include "libknot/errcode.h"
 #include "knot/zone/zone-diff.h"
+#include "knot/zone/serial.h"
 #include "libknot/descriptor.h"
 #include "libknot/internal/utils.h"
 #include "libknot/rrtype/soa.h"
@@ -220,13 +221,11 @@ static int knot_zone_diff_rrsets(const knot_rrset_t *rrset1,
 }
 
 /*!< \todo this could be generic function for adding / removing. */
-static int knot_zone_diff_node(zone_node_t **node_ptr, void *data)
+static int knot_zone_diff_node(zone_node_t *node, void *data)
 {
-	if (node_ptr == NULL || *node_ptr == NULL || data == NULL) {
+	if (node == NULL || data == NULL) {
 		return KNOT_EINVAL;
 	}
-
-	zone_node_t *node = *node_ptr;
 
 	struct zone_diff_param *param = (struct zone_diff_param *)data;
 	if (param->changeset == NULL) {
@@ -312,13 +311,11 @@ static int knot_zone_diff_node(zone_node_t **node_ptr, void *data)
 }
 
 /*!< \todo possibly not needed! */
-static int knot_zone_diff_add_new_nodes(zone_node_t **node_ptr, void *data)
+static int knot_zone_diff_add_new_nodes(zone_node_t *node, void *data)
 {
-	if (node_ptr == NULL || *node_ptr == NULL || data == NULL) {
+	if (node == NULL || data == NULL) {
 		return KNOT_EINVAL;
 	}
-
-	zone_node_t *node = *node_ptr;
 
 	struct zone_diff_param *param = (struct zone_diff_param *)data;
 	if (param->changeset == NULL) {
@@ -338,10 +335,7 @@ static int knot_zone_diff_add_new_nodes(zone_node_t **node_ptr, void *data)
 	 */
 	assert(node_owner);
 
-	zone_node_t *new_node = NULL;
-#warning zone_read here
-//	zone_tree_get(param->nodes, node_owner, &new_node);
-
+	zone_node_t *new_node = zone_tree_get(param->nodes, node_owner);
 	if (!new_node) {
 		assert(node);
 		return knot_zone_diff_add_node(node, param->changeset);
@@ -361,14 +355,14 @@ static int knot_zone_diff_load_trees(zone_tree_t *nodes1,
 
 	// Traverse one tree, compare every node, each RRSet with its rdata.
 	param.nodes = nodes2;
-	int result = zone_tree_apply(nodes1, knot_zone_diff_node, &param);
+	int result = zone_tree_apply(nodes1, knot_zone_diff_node, &param, false);
 	if (result != KNOT_EOK) {
 		return result;
 	}
 
 	// Some nodes may have been added. Add missing nodes to changeset.
 	param.nodes = nodes1;
-	result = zone_tree_apply(nodes2, knot_zone_diff_add_new_nodes, &param);
+	result = zone_tree_apply(nodes2, knot_zone_diff_add_new_nodes, &param, false);
 
 	return result;
 }
@@ -386,9 +380,9 @@ static int knot_zone_diff_load_content(const zone_contents_t *zone1,
 	                                 changeset);
 }
 
-static int zone_contents_diff(const zone_contents_t *zone1,
-                              const zone_contents_t *zone2,
-                              changeset_t *changeset)
+int zone_contents_diff(const zone_contents_t *zone1,
+                       const zone_contents_t *zone2,
+                       changeset_t *changeset)
 {
 	if (zone1 == NULL || zone2 == NULL) {
 		return KNOT_EINVAL;
@@ -402,23 +396,3 @@ static int zone_contents_diff(const zone_contents_t *zone1,
 	return knot_zone_diff_load_content(zone1, zone2, changeset);
 }
 
-int zone_contents_create_diff(const zone_contents_t *z1,
-                              const zone_contents_t *z2,
-                              changeset_t *changeset)
-{
-	int ret = zone_contents_diff(z1, z2, changeset);
-	if (ret != KNOT_EOK) {
-		return ret;
-	}
-
-	return KNOT_EOK;
-}
-
-int zone_tree_add_diff(zone_tree_t *t1, zone_tree_t *t2, changeset_t *changeset)
-{
-	if (!changeset) {
-		return KNOT_EINVAL;
-	}
-
-	return knot_zone_diff_load_trees(t1, t2, changeset);
-}
