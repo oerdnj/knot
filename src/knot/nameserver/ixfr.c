@@ -21,6 +21,7 @@
 #include "knot/nameserver/process_answer.h"
 #include "knot/updates/apply.h"
 #include "knot/common/debug.h"
+#include "knot/zone/serial.h"
 #include "libknot/descriptor.h"
 #include "libknot/internal/utils.h"
 #include "libknot/rrtype/soa.h"
@@ -51,8 +52,6 @@ struct ixfr_proc {
 	mm_ctx_t *mm;                  /* Memory context for RR allocations. */
 	struct query_data *qdata;
 };
-
-#warning extend the structure above
 
 /* IXFR-out-specific logging (internal, expects 'qdata' variable set). */
 #define IXFROUT_LOG(severity, msg...) \
@@ -199,7 +198,7 @@ static int ixfr_query_check(struct query_data *qdata)
 	NS_NEED_QNAME(qdata, their_soa->owner, KNOT_RCODE_FORMERR);
 
 	/* Check transcation security and zone contents. */
-	NS_NEED_AUTH(&qdata->zone->conf->acl.xfr_out, qdata);
+	NS_NEED_AUTH(&qdata->zr.zone->conf->acl.xfr_out, qdata);
 	NS_NEED_ZONE_CONTENTS(qdata, KNOT_RCODE_SERVFAIL); /* Check expiration. */
 
 	return KNOT_NS_PROC_DONE;
@@ -239,7 +238,7 @@ static int ixfr_answer_init(struct query_data *qdata)
 		return KNOT_ENOMEM;
 	}
 	memset(xfer, 0, sizeof(struct ixfr_proc));
-	int ret = changeset_init(&xfer->ch, qdata->zone->name);
+	int ret = changeset_init(&xfer->ch, qdata->zr.zone->name);
 	if (ret != KNOT_EOK) {
 		mm_free(mm, xfer);
 		return ret;
@@ -254,7 +253,7 @@ static int ixfr_answer_init(struct query_data *qdata)
 
 	/* Load changes. */
 	const knot_rrset_t *their_soa = &knot_pkt_section(qdata->query, KNOT_AUTHORITY)->rr[0];
-	ret = ixfr_load_changes(&xfer->ch, qdata->zone, their_soa);
+	ret = ixfr_load_changes(&xfer->ch, qdata->zr.zone, their_soa);
 	if (ret != KNOT_EOK) {
 		qdata->ext = xfer;
 		ixfr_answer_cleanup(qdata);
@@ -291,7 +290,7 @@ static int ixfr_answer_soa(knot_pkt_t *pkt, struct query_data *qdata)
 	knot_pkt_reserve(pkt, knot_tsig_wire_maxsize(qdata->sign.tsig_key));
 
 	/* Guaranteed to have zone contents. */
-	const zone_node_t *apex = qdata->zone->contents->apex;
+	const zone_node_t *apex = qdata->zr.zone->contents->apex;
 	knot_rrset_t soa_rr = node_rrset(apex, KNOT_RRTYPE_SOA);
 	if (knot_rrset_empty(&soa_rr)) {
 		return KNOT_NS_PROC_FAIL;
