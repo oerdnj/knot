@@ -43,19 +43,8 @@ typedef struct zone_contents {
 
 /* ------------------- TO ANSWERING ------------------------------------ */
 
-int zone_contents_find_dname(const zone_contents_t *contents,
-                             const knot_dname_t *name,
-                             const zone_node_t **node,
-                             const zone_node_t **closest_encloser,
-                             const zone_node_t **previous);
-
 const zone_node_t *zone_contents_find_previous_for_type(const zone_contents_t *contents,
                                                         const knot_dname_t *name, uint16_t type);
-
-int zone_contents_find_nsec3_for_name(const zone_contents_t *contents,
-                                      const knot_dname_t *name,
-                                      const zone_node_t **nsec3_node,
-                                      const zone_node_t **nsec3_previous);
 
 /* ------------------- TO ANSWERING ------------------------------------ */
 
@@ -91,22 +80,28 @@ bool zone_contents_is_empty(const zone_contents_t *zone);
 
 /* --------------------------- NEW API -------------------------------------- */
 
-zone_node_t *zone_contents_get_node_for_rr(zone_contents_t *zone, const knot_rrset_t *rrset);
+zone_node_t *zone_contents_get_node_for_rr(const zone_contents_t *zone, const knot_rrset_t *rrset);
 zone_node_t *zone_contents_find_node_for_rr(const zone_contents_t *zone, const knot_rrset_t *rrset);
+zone_node_t *zone_contents_greatest_child(const zone_contents_t *zone, const knot_dname_t *parent);
 
 zone_contents_t *zone_contents_new(const knot_dname_t *apex_name);
 
 int zone_contents_shallow_copy(const zone_contents_t *from, zone_contents_t **to);
 
-zone_node_t *zone_contents_find_node_for_type(zone_contents_t *zone, const knot_dname_t *owner, const uint16_t type);
+zone_node_t *zone_contents_find_node_for_type(const zone_contents_t *zone, const knot_dname_t *owner, const uint16_t type);
 
+bool zone_contents_rrset_is_nsec3rel(const knot_rrset_t *rr);
 int zone_contents_add_rr(zone_contents_t *z, const knot_rrset_t *rr);
 
-zone_node_t *zone_contents_find_wildcard_child(const zone_contents_t *contents,
-                                               const zone_node_t *parent);
+zone_node_t *zone_contents_find_wildcard_child(const zone_contents_t *contents, const knot_dname_t *parent);
 
 zone_node_t *zone_contents_find_closest_encloser(const zone_contents_t *zone, const knot_dname_t *owner);
 
+zone_node_t *zone_contents_find_nsec3(const zone_contents_t *zone, const knot_dname_t *owner);
+zone_node_t *zone_contents_find_nsec3_prev(const zone_contents_t *zone, const knot_dname_t *owner);
+
 bool zone_contents_has_children(const zone_contents_t *zone, const knot_dname_t *owner);
+
+void zone_contents_delete_empty_node(zone_contents_t *zone, zone_tree_t *tree, zone_node_t *node);
 
 /*! @} */
