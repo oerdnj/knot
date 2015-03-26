@@ -165,25 +165,28 @@ static int query_chaos(knot_pkt_t *pkt, knot_layer_t *ctx)
 }
 
 /*! \brief Find zone for given question. */
-static const zone_t *answer_zone_find(const knot_pkt_t *query, knot_zonedb_t *zonedb)
+static int answer_zone_find(const knot_pkt_t *query, knot_zonedb_t *zonedb, zone_read_t *zr)
 {
 	uint16_t qtype = knot_pkt_qtype(query);
 	uint16_t qclass = knot_pkt_qclass(query);
 	const knot_dname_t *qname = knot_pkt_qname(query);
-	const zone_t *zone = NULL;
 
 	// search for zone only for IN and ANY classes
 	if (qclass != KNOT_CLASS_IN && qclass != KNOT_CLASS_ANY) {
-		return NULL;
+		return KNOT_EINVAL;
 	}
 
 	/* In case of DS query, we strip the leftmost label when searching for
 	 * the zone (but use whole qname in search for the record), as the DS
 	 * records are only present in a parent zone.
 	 */
+	int ret = KNOT_ENOENT;
 	if (qtype == KNOT_RRTYPE_DS) {
 		const knot_dname_t *parent = knot_wire_next_label(qname, NULL);
-		zone = knot_zonedb_find_suffix(zonedb, parent);
+		ret = zone_read_begin_suffix(zr, zonedb, parent);
+		if (ret != KNOT_EOK && ret != KNOT_ENOENT) {
+			return ret;
+		}
 		/* If zone does not exist, search for its parent zone,
 		   this will later result to NODATA answer. */
 		/*! \note This is not 100% right, it may lead to DS name for example
@@ -192,16 +195,16 @@ static const zone_t *answer_zone_find(const knot_pkt_t *query, knot_zonedb_t *zo
 		 */
 	}
 
-	if (zone == NULL) {
+	if (ret == KNOT_ENOENT) {
 		if (knot_pkt_type(query) == KNOT_QUERY_NORMAL) {
-			zone = knot_zonedb_find_suffix(zonedb, qname);
+			ret = zone_read_begin_suffix(zr, zonedb, qname);
 		} else {
 			// Direct match required.
-			zone = knot_zonedb_find(zonedb, qname);
+			ret = zone_read_begin(zr, zonedb, qname);
 		}
 	}
 
-	return zone;
+	return ret;
 }
 
 static int answer_edns_reserve(knot_pkt_t *resp, struct query_data *qdata)
@@ -307,7 +310,7 @@ static int prepare_answer(const knot_pkt_t *query, knot_pkt_t *resp, knot_layer_
 		return ret;
 	}
 	/* Find zone for QNAME. */
-	qdata->zone = answer_zone_find(query, server->zone_db);
+	ret = answer_zone_find(query, server->zone_db, &qdata->zr);
 
 	/* Setup EDNS. */
 	ret = answer_edns_init(query, resp, qdata);
@@ -405,7 +408,7 @@ static int ratelimit_apply(int state, knot_pkt_t *pkt, knot_layer_t *ctx)
 		rrl_rq.flags = RRL_WILDCARD;
 	}
 	if (rrl_query(server->rrl, qdata->param->remote,
-	              &rrl_rq, qdata->zone) == KNOT_EOK) {
+	              &rrl_rq, qdata->zr.zone) == KNOT_EOK) {
 		/* Rate limiting not applied. */
 		return state;
 	}

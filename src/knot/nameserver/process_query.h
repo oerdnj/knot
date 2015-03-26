@@ -29,6 +29,7 @@
 #include "libknot/processing/layer.h"
 #include "knot/server/server.h"
 #include "knot/updates/acl.h"
+#include "knot/updates/zone-read.h"
 
 /* Query processing module implementation. */
 const knot_layer_api_t *process_query_get_module(void);
@@ -72,8 +73,7 @@ struct query_data {
 	uint16_t rcode_tsig;  /*!< Resulting TSIG RCODE. */
 	uint16_t packet_type; /*!< Resolved packet type. */
 	knot_pkt_t *query;    /*!< Query to be solved. */
-	const zone_t *zone;   /*!< Zone from which is answered. */
-	zone_read_t *zr;
+	zone_read_t zr;       /*!< Zone from which is answered. */
 	list_t wildcards;     /*!< Visited wildcards. */
 	list_t rrsigs;        /*!< Section RRSIGs. */
 
