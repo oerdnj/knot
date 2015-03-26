@@ -134,9 +134,6 @@ int zone_change_store(zone_t *zone, changeset_t *change)
 	pthread_mutex_unlock(&zone->journal_lock);
 
 	return ret;
-	}
-
-	return ret;
 }
 
 zone_contents_t *zone_switch_contents(zone_t *zone, zone_contents_t *new_contents)
@@ -186,9 +183,14 @@ int zone_flush_journal(zone_t *zone)
 	}
 
 	/* Check for difference against zonefile serial. */
-	zone_contents_t *contents = zone->contents;
-	uint32_t serial_to = zone_contents_serial(contents);
+	zone_read_t zr;
+	int ret = zone_read_from_zone(&zr, zone);
+	if (ret != KNOT_EOK) {
+		return ret;
+	}
+	uint32_t serial_to = zone_contents_serial(zr.zone->contents);
 	if (zone->zonefile_serial == serial_to) {
+		zone_read_done(&zr);
 		return KNOT_EOK; /* No differences. */
 	}
 
@@ -201,7 +203,8 @@ int zone_flush_journal(zone_t *zone)
 
 	/* Synchronize journal. */
 	conf_zone_t *conf = zone->conf;
-	int ret = zonefile_write(conf->file, contents, from);
+	ret = zonefile_write(conf->file, &zr, from);
+	zone_read_done(&zr);
 	if (ret == KNOT_EOK) {
 		log_zone_info(zone->name, "zone file updated, serial %u -> %u",
 		              zone->zonefile_serial, serial_to);
@@ -227,7 +230,7 @@ int zone_flush_journal(zone_t *zone)
 	/* Trim extra heap. */
 	mem_trim();
 
-	return ret;
+	return KNOT_EOK;
 }
 
 int zone_update_enqueue(zone_t *zone, knot_pkt_t *pkt, struct process_query_param *param)
