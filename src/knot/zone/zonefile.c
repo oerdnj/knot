@@ -39,6 +39,7 @@
 #include "knot/zone/zone-dump.h"
 #include "libknot/rrtype/naptr.h"
 #include "knot/updates/zone-update.h"
+#include "knot/updates/apply.h"
 
 #define ERROR(zone, fmt...) log_zone_error(zone, "zone loader, " fmt)
 #define WARNING(zone, fmt...) log_zone_warning(zone, "zone loader, " fmt)
@@ -72,9 +73,7 @@ static bool handle_err(zcreator_t *zc, const knot_rrset_t *rr, int ret, bool mas
 		return true;
 	} else if (ret == KNOT_ETTL) {
 		free(rrname);
-//		assert(node);
-#warning ttl
-//		log_ttl_error(zc->z, node, rr);
+		log_ttl_error(zc->up->zone->name, rr, master);
 		// Fail if we're the master for this zone.
 		return !master;
 	} else {
@@ -85,14 +84,9 @@ static bool handle_err(zcreator_t *zc, const knot_rrset_t *rr, int ret, bool mas
 	}
 }
 
-void log_ttl_error(const zone_contents_t *zone, const zone_node_t *node,
-		   const knot_rrset_t *rr)
+void log_ttl_error(const knot_dname_t *zone_name, const knot_rrset_t *rr, bool master)
 {
-	return;
-#warning extract handler from semchecks
-//	err_handler_t err_handler;
-//	err_handler_init(&err_handler);
-	// Prepare additional info string.
+	// Prepare info string.
 	char info_str[64] = { '\0' };
 	char type_str[16] = { '\0' };
 	knot_rrtype_to_string(rr->type, type_str, sizeof(type_str));
@@ -102,10 +96,11 @@ void log_ttl_error(const zone_contents_t *zone, const zone_node_t *node,
 		*info_str = '\0';
 	}
 
-	/*!< \todo REPLACE WITH FATAL ERROR for master. */
-#warning ...
-//	log_semantic_error(&err_handler, zone, node,
-//	                         ZC_ERR_TTL_MISMATCH, info_str);
+	if (master) {
+		log_semantic_error(zone_name, rr->owner, TTL_MISMATCH);
+	} else {
+		log_semantic_warning(zone_name, rr->owner, TTL_MISMATCH);
+	}
 }
 
 int zcreator_step(zcreator_t *zc, const knot_rrset_t *rr)
@@ -134,20 +129,10 @@ int zcreator_step(zcreator_t *zc, const knot_rrset_t *rr)
 		}
 	}
 
-	// Do node semantic checks
-//	err_handler_t err_handler;
-//	err_handler_init(&err_handler);
-	bool sem_fatal_error = false;
-
-#warning move semchecks into zone_updater.
-//	ret = sem_check_node_plain(zc->z, node,
-//	                           &err_handler, true,
-//	                           &sem_fatal_error);
-//	if (ret != KNOT_EOK) {
-//		return ret;
-//	}
-
-	return sem_fatal_error ? KNOT_ESEMCHECK : KNOT_EOK;
+	const uint16_t qtype = zone_contents_rrset_is_nsec3rel(rr) ? KNOT_RRTYPE_NSEC3 : KNOT_RRTYPE_ANY;
+	const zone_node_t *n = zone_update_get_node(zc->up, rr->owner, qtype);
+	assert(n);
+	return sem_check_node(zc->up, n) ? KNOT_EOK : KNOT_ESEMCHECK;
 }
 
 /*! \brief Creates RR from parser input, passes it to handling function. */
@@ -276,7 +261,6 @@ int zonefile_load(zloader_t *loader)
 	if ((ret != KNOT_EOK && ret != KNOT_ERANGE) || changeset_empty(&ch)) {
 		changeset_clear(&ch);
 		/* Absence of records is not an error. */
-#warning this loads the whole thing and then discards it if there's not enough data. not good.
 		if (ret == KNOT_ENOENT) {
 			return KNOT_EOK;
 		} else {
@@ -288,27 +272,6 @@ int zonefile_load(zloader_t *loader)
 	ret = apply_changeset_directly(zc->up->new_cont, &ch);
 	changeset_clear(&ch);
 	return ret;
-
-#warning move this to the commit stage,or better yet an event
-//	if (loader->semantic_checks) {
-//		int check_level = SEM_CHECK_UNSIGNED;
-//		knot_rrset_t soa_rr = node_rrset(zc->z->apex, KNOT_RRTYPE_SOA);
-//		assert(!knot_rrset_empty(&soa_rr)); // In this point, SOA has to exist
-//		const bool have_nsec3param =
-//			node_rrtype_exists(zc->z->apex, KNOT_RRTYPE_NSEC3PARAM);
-//		if (zone_contents_is_signed(zc->z) && !have_nsec3param) {
-
-//			/* Set check level to DNSSEC. */
-//			check_level = SEM_CHECK_NSEC;
-//		} else if (zone_contents_is_signed(zc->z) && have_nsec3param) {
-//			check_level = SEM_CHECK_NSEC3;
-//		}
-//		err_handler_t err_handler;
-//		err_handler_init(&err_handler);
-//		zone_do_sem_checks(zc->z, check_level,
-//		                   &err_handler, NULL, NULL);
-//		INFO(zname, "semantic check, completed");
-//	}
 }
 
 /*! \brief Return zone file mtime. */
@@ -346,10 +309,10 @@ static int zones_open_free_filename(const char *old_name, char **new_name)
 	return fd;
 }
 
-int zonefile_write(const char *path, zone_contents_t *zone,
+int zonefile_write(const char *path, zone_read_t *zr,
                    const struct sockaddr_storage *from)
 {
-	if (!zone || !path) {
+	if (!zr || !path) {
 		return KNOT_EINVAL;
 	}
 
@@ -359,18 +322,18 @@ int zonefile_write(const char *path, zone_contents_t *zone,
 		return KNOT_EWRITABLE;
 	}
 
-	const knot_dname_t *zname = zone->apex->owner;
+	const knot_dname_t *zname = zr->zone->name;
 
 	FILE *f = fdopen(fd, "w");
 	if (f == NULL) {
 		WARNING(zname, "failed to open zone, file '%s' (%s)",
-		        new_fname, knot_strerror(knot_errno_to_error(errno)));
+		        new_fname, knot_strerror(knot_map_errno(errno)));
 		unlink(new_fname);
 		free(new_fname);
 		return KNOT_ERROR;
 	}
 
-	if (zone_dump_text(zone, from, f) != KNOT_EOK) {
+	if (zone_dump_text(zr, from, f) != KNOT_EOK) {
 		WARNING(zname, "failed to save zone, file '%s'", new_fname);
 		fclose(f);
 		unlink(new_fname);

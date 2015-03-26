@@ -30,6 +30,7 @@
 #include <stdio.h>
 
 #include "knot/updates/zone-update.h"
+#include "knot/updates/zone-read.h"
 #include "knot/zone/semantic-check.h"
 #include "zscanner/scanner.h"
 /*!
@@ -80,7 +81,7 @@ time_t zonefile_mtime(const char *path);
 /*!
  * \brief Write zone contents to zone file.
  */
-int zonefile_write(const char *path, zone_contents_t *zone,
+int zonefile_write(const char *path, zone_read_t *zr,
                    const struct sockaddr_storage *from);
 
 /*!
@@ -109,11 +110,10 @@ void process_error(zs_scanner_t *scanner);
 /*!
  * \brief Logs TTL mismatch error.
  *
- * \param zone    Related zone.
- * \param node    Node with TTL mismatch.
- * \param rr      RR that caused the mismatch.
+ * \param zone_name  Name of the related zone.
+ * \param rr         RR that caused the mismatch.
+ * \param master     Set to true if master zone.
  */
-void log_ttl_error(const zone_contents_t *zone, const zone_node_t *node,
-                   const knot_rrset_t *rr);
+void log_ttl_error(const knot_dname_t *zone_name, const knot_rrset_t *rr, bool master);
 
 /*! @} */
