@@ -21,6 +21,7 @@
 #include "knot/updates/ddns.h"
 #include "knot/updates/changesets.h"
 #include "knot/updates/zone-update.h"
+#include "knot/zone/serial.h"
 #include "libknot/packet/pkt.h"
 #include "libknot/consts.h"
 #include "libknot/rrtype/soa.h"
@@ -67,7 +68,7 @@ static int check_rrset_exists(zone_update_t *update, const knot_rrset_t *rrset,
 {
 	assert(rrset->type != KNOT_RRTYPE_ANY);
 
-	const zone_node_t *node = zone_update_get_node(update, rrset->owner);
+	const zone_node_t *node = zone_update_get_node(update, rrset->owner, rrset->type);
 	if (node == NULL || !node_rrtype_exists(node, rrset->type)) {
 		*rcode = KNOT_RCODE_NXRRSET;
 		return KNOT_EPREREQ;
@@ -104,7 +105,7 @@ static int check_stored_rrsets(list_t *l, zone_update_t *update,
 static bool check_type(zone_update_t *update, const knot_rrset_t *rrset)
 {
 	assert(rrset->type != KNOT_RRTYPE_ANY);
-	const zone_node_t *node = zone_update_get_node(update, rrset->owner);
+	const zone_node_t *node = zone_update_get_node(update, rrset->owner, rrset->type);
 	if (node == NULL || !node_rrtype_exists(node, rrset->type)) {
 		return false;
 	}
@@ -139,10 +140,9 @@ static int check_type_not_exist(zone_update_t *update,
 }
 
 /*!< \brief Checks whether DNAME is in the zone. */
-static int check_in_use(zone_update_t *update,
-                        const knot_dname_t *dname, uint16_t *rcode)
+static int check_in_use(zone_update_t *update, const knot_dname_t *dname, uint16_t *rcode)
 {
-	const zone_node_t *node = zone_update_get_node(update, dname);
+	const zone_node_t *node = zone_update_get_node(update, dname, KNOT_RRTYPE_ANY);
 	if (node == NULL || node->rrset_count == 0) {
 		*rcode = KNOT_RCODE_NXDOMAIN;
 		return KNOT_EPREREQ;
@@ -152,10 +152,9 @@ static int check_in_use(zone_update_t *update,
 }
 
 /*!< \brief Checks whether DNAME is not in the zone. */
-static int check_not_in_use(zone_update_t *update,
-                            const knot_dname_t *dname, uint16_t *rcode)
+static int check_not_in_use(zone_update_t *update, const knot_dname_t *dname, uint16_t *rcode)
 {
-	const zone_node_t *node = zone_update_get_node(update, dname);
+	const zone_node_t *node = zone_update_get_node(update, dname, KNOT_RRTYPE_ANY);
 	if (node == NULL || node->rrset_count == 0) {
 		return KNOT_EOK;
 	} else {
@@ -253,29 +252,6 @@ static inline bool is_node_removal(const knot_rrset_t *rr)
 	return rr->rclass == KNOT_CLASS_ANY && rr->type == KNOT_RRTYPE_ANY;
 }
 
-/*!< \brief Returns true if last addition of certain types is to be replaced. */
-static bool should_replace(const knot_rrset_t *rrset)
-{
-	return rrset->type == KNOT_RRTYPE_CNAME ||
-	       rrset->type == KNOT_RRTYPE_NSEC3PARAM;
-}
-
-/*!< \brief Returns true if node contains given RR in its RRSets. */
-static bool node_contains_rr(const zone_node_t *node,
-                             const knot_rrset_t *rr)
-{
-	const knot_rdataset_t *zone_rrs = node_rdataset(node, rr->type);
-	if (zone_rrs) {
-		assert(rr->rrs.rr_count == 1);
-		const bool compare_ttls = false;
-		return knot_rdataset_member(zone_rrs,
-		                            knot_rdataset_at(&rr->rrs, 0),
-		                            compare_ttls);
-	} else {
-		return false;
-	}
-}
-
 /*!< \brief Used to ignore SOA deletions and SOAs with lower serial than zone. */
 static bool skip_soa(const knot_rrset_t *rr, const uint32_t sn)
 {
@@ -358,7 +334,7 @@ static int process_rem_rrset(const knot_rrset_t *rrset,
                              zone_update_t *update)
 {
 	if (rrset->type == KNOT_RRTYPE_SOA ||
-	    knot_rrtype_is_ddns_forbidden(rrset->type)) {
+	    knot_rrtype_is_dnssec(rrset->type)) {
 		// Ignore SOA and DNSSEC removals.
 		return KNOT_EOK;
 	}
@@ -422,13 +398,12 @@ static int process_remove(const knot_rrset_t *rr,
 /* --------------------------- validity checks ------------------------------ */
 
 /*!< \brief Checks whether addition has not violated DNAME rules. */
-static bool sem_check(const knot_rrset_t *rr,
-                      const zone_node_t *zone_node,
+static bool sem_check(const knot_rrset_t *rr, const zone_node_t *zone_node,
                       zone_update_t *update)
 {
 	// Check that we have not added DNAME child
 	const knot_dname_t *parent_dname = knot_wire_next_label(rr->owner, NULL);
-	const zone_node_t *parent = zone_update_get_node(update, parent_dname);
+	const zone_node_t *parent = zone_update_get_node(update, parent_dname, KNOT_RRTYPE_ANY);
 	if (parent == NULL) {
 		return true;
 	}
@@ -443,8 +418,7 @@ static bool sem_check(const knot_rrset_t *rr,
 	}
 
 	// Check that we have not created node with DNAME children.
-#warning direct use of contents
-	if (zone_contents_has_children(update->zone->contents, zone_node->owner)) {
+	if (zone_update_has_children(update, zone_node->owner)) {
 		// Updated node has children and DNAME was added, refuse update
 		return false;
 	}
@@ -465,7 +439,7 @@ static int check_update(const knot_rrset_t *rrset, const knot_pkt_t *query,
 		return KNOT_EOUTOFZONE;
 	}
 
-	if (knot_rrtype_is_ddns_forbidden(rrset->type)) {
+	if (knot_rrtype_is_dnssec(rrset->type)) {
 		*rcode = KNOT_RCODE_REFUSED;
 		log_warning("DDNS, refusing to update DNSSEC-related record");
 		return KNOT_EDENIED;
@@ -500,7 +474,7 @@ static int check_update(const knot_rrset_t *rrset, const knot_pkt_t *query,
 /*!< \brief Checks RR and decides what to do with it. */
 static int process_rr(const knot_rrset_t *rr, zone_update_t *update)
 {
-	const zone_node_t *node = zone_update_get_node(update, rr->owner);
+	const zone_node_t *node = zone_update_get_node(update, rr->owner, KNOT_RRTYPE_ANY);
 
 	if (is_addition(rr)) {
 		int ret = process_add_normal(node, rr, update);
@@ -595,7 +569,6 @@ int ddns_process_update(const zone_t *zone, const knot_pkt_t *query,
 	}
 
 	if (zone_update_to(update) == NULL) {
-#warning updates SOA everytime for now, I think that's actually okay, but it'd better to check for changes
 		// No SOA in the update, create one according to the current policy
 		knot_rrset_t old_soa = node_rrset(zone_update_get_apex(update), KNOT_RRTYPE_SOA);
 		knot_rrset_t *new_soa = knot_rrset_copy(&old_soa, NULL);
@@ -604,12 +577,14 @@ int ddns_process_update(const zone_t *zone, const knot_pkt_t *query,
 			return KNOT_ENOMEM;
 		}
 
-		const uint32_t new_serial = zone_contents_next_serial(zone->contents,
-		                               zone->conf->serial_policy);
+		const uint32_t new_serial =
+			zone_contents_next_serial(zone->contents,
+			                          zone->conf->serial_policy);
 		knot_soa_serial_set(&new_soa->rrs, new_serial);
 		int ret = zone_update_add(update, new_soa);
 		knot_rrset_free(&new_soa, NULL);
 		if (ret != KNOT_EOK) {
+			*rcode = ret_to_rcode(ret);
 			return ret;
 		}
 	}
