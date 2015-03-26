@@ -31,10 +31,10 @@
 #include "knot/zone/contents.h"
 #include "libknot/internal/mempattern.h"
 
-/*! \brief Structure for zone contents updating / querying \todo to be moved to new ZONE API */
 typedef struct {
 	zone_t *zone;        /*!< Zone being updated. */
-	zone_contents_t *new_cont;
+	zone_contents_t *new_cont; /*!< New zone contents for full updates. */
+	zone_contents_t *synth_nodes; /*!< Cache for synthesised nodes. */
 	changeset_t change;          /*!< Changes we want to apply. */
 	mm_ctx_t mm;                  /*!< Memory context used for intermediate nodes. */
 	changeset_t iteration_changes;
@@ -48,6 +48,7 @@ typedef struct {
 	const zone_node_t *t_node;
 	const zone_node_t *ch_node;
 	const zone_node_t *next_n;
+	bool nsec3;
 } zone_update_iter_t;
 
 typedef enum {
@@ -71,16 +72,21 @@ int zone_update_init(zone_update_t *update, zone_t *zone, zone_update_flags_t fl
  * \brief Returns node that would be in the zone after updating it.
  *
  * \note Returned node is either zone original or synthesized, do *not* free
- *       or modify.
+ *       or modify. Node's data are guaranteed to be valid at least between
+ *       two subsequent get operations and during whole update iteration. If
+ *       you need persistent nodes, a copy must be made.
  *
  * \param update  Zone update.
  * \param dname   Dname to search for.
  *
  * \return Node after zone update.
  */
-const zone_node_t *zone_update_get_node(zone_update_t *update,
-                                        const knot_dname_t *dname);
-const zone_node_t *zone_update_get_apex(const zone_update_t *update);
+const zone_node_t *zone_update_get_node(zone_update_t *update, const knot_dname_t *dname,
+                                        const uint16_t type);
+const zone_node_t *zone_update_get_prev(zone_update_t *update, const knot_dname_t *dname, const uint16_t type);
+const zone_node_t *zone_update_get_apex(zone_update_t *update);
+bool zone_update_has_children(zone_update_t *update, const knot_dname_t *owner);
+bool zone_update_node_is_nonauth(zone_update_t *update, const knot_dname_t *owner);
 uint32_t zone_update_current_serial(zone_update_t *update);
 
 const knot_rdataset_t *zone_update_from(zone_update_t *update);
@@ -98,10 +104,11 @@ int zone_update_remove(zone_update_t *update, const knot_rrset_t *rrset);
 int zone_update_commit(zone_update_t *update);
 
 int zone_update_iter(zone_update_iter_t *it, zone_update_t *update, const bool read_only);
-int zone_update_iter_nsec3(zone_update_iter_t *it, zone_update_t *update);
+int zone_update_iter_nsec3(zone_update_iter_t *it, zone_update_t *update, const bool read_only);
 int zone_update_iter_next(zone_update_iter_t *it);
 const zone_node_t *zone_update_iter_val(zone_update_iter_t *it);
 int zone_update_iter_finish(zone_update_iter_t *it);
 int zone_update_load_contents(zone_update_t *up);
+bool zone_update_no_change(zone_update_t *up);
 
 /*! @} */
