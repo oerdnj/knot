@@ -48,32 +48,13 @@ typedef struct zone_node {
 	struct node_ref *prev; /*! Previous node in canonical order. */
 	struct node_ref *nsec3_node; /*! NSEC3 node corresponding to this node. */
 	uint16_t rrset_count; /*!< Number of RRSets stored in the node. */
-	uint8_t flags; /*!< \ref node_flags enum. */
 } zone_node_t;
 
 /*!< \brief Structure storing RR data. */
 struct rr_data {
 	uint16_t type; /*!< \brief RR type of data. */
 	knot_rdataset_t rrs; /*!< \brief Data of given type. */
-	zone_node_t **additional; /*!< \brief Additional nodes with glues. */
-};
-
-/*! \brief Flags used to mark nodes with some property. */
-enum node_flags {
-	/*! \brief Node is authoritative, default. */
-	NODE_FLAGS_AUTH =            0 << 0,
-	/*! \brief Node is a delegation point (i.e. marking a zone cut). */
-	NODE_FLAGS_DELEG =           1 << 1,
-	/*! \brief Node is not authoritative (i.e. below a zone cut). */
-	NODE_FLAGS_NONAUTH =         1 << 2,
-	/*! \brief NSEC/NSEC3 was removed from this node. */
-	NODE_FLAGS_REMOVED_NSEC =    1 << 3,
-	/*! \brief Node is empty and will be deleted after update. */
-	NODE_FLAGS_EMPTY =           1 << 4,
-	/*! \brief Node has a wildcard child. */
-	NODE_FLAGS_WILDCARD_CHILD =  1 << 5,
-	/*! \brief Node has a wildcard child. */
-	NODE_FLAGS_GLUE =            1 << 6
+	struct node_ref **additional; /*!< \brief References to additional nodes with glues. */
 };
 
 /* ------------------------- Node create/free --------------------------------*/
@@ -161,6 +142,10 @@ knot_rrset_t *node_create_rrset(const zone_node_t *node, uint16_t type);
  * \return Pointer to data if found, NULL otherwise.
  */
 knot_rdataset_t *node_rdataset(const zone_node_t *node, uint16_t type);
+
+/* ----------------------- Type of node bool checks ------------------------- */
+
+bool node_is_deleg(const zone_node_t *node);
 
 /* ----------------------------- Bool checks -------------------------------- */
 

@@ -85,6 +85,28 @@ static bool ttl_error(struct rr_data *node_data, const knot_rrset_t *rrset)
 	return inserted_ttl != node_ttl;
 }
 
+static int init_references(zone_node_t *node)
+{
+	#warning this could all be null, leave for now, but this MUST be sorted out
+	node->parent = node_ref_new(NULL);
+	node->nsec3_node = node_ref_new(NULL);
+	node->prev = node_ref_new(NULL);
+	if (node->parent == NULL ||
+	    node->nsec3_node == NULL ||
+	    node->prev == NULL) {
+		free(node->parent);
+		free(node->nsec3_node);
+		free(node->prev);
+		return KNOT_ENOMEM;
+	}
+
+	node_ref_invalidate(node->parent);
+	node_ref_invalidate(node->nsec3_node);
+	node_ref_invalidate(node->prev);
+
+	return KNOT_EOK;
+}
+
 zone_node_t *node_new(const knot_dname_t *owner, mm_ctx_t *mm)
 {
 	zone_node_t *ret = mm_alloc(mm, sizeof(zone_node_t));
@@ -94,8 +116,13 @@ zone_node_t *node_new(const knot_dname_t *owner, mm_ctx_t *mm)
 	memset(ret, 0, sizeof(*ret));
 	ret->self_ref = node_ref_new(ret);
 	if (ret->self_ref == NULL) {
-		mm_free(mm, ret);
+		node_free(&ret, mm);
 		return NULL;
+	}
+	int result = init_references(ret);
+	if (result != KNOT_EOK) {
+		node_free(&ret, mm);
+		return ret;
 	}
 
 	if (owner) {
@@ -105,9 +132,6 @@ zone_node_t *node_new(const knot_dname_t *owner, mm_ctx_t *mm)
 			return NULL;
 		}
 	}
-
-	// Node is authoritive by default.
-	ret->flags = NODE_FLAGS_AUTH;
 
 	return ret;
 }
@@ -122,6 +146,8 @@ void node_free_rrsets(zone_node_t *node, mm_ctx_t *mm)
 		rr_data_clear(&node->rrs[i], NULL);
 	}
 
+	mm_free(mm, node->rrs);
+	node->rrs = NULL;
 	node->rrset_count = 0;
 }
 
@@ -131,6 +157,7 @@ void node_free(zone_node_t **node, mm_ctx_t *mm)
 		return;
 	}
 	node_ref_invalidate((*node)->self_ref);
+	node_ref_release((*node)->self_ref);
 
 	if ((*node)->rrs != NULL) {
 		mm_free(mm, (*node)->rrs);
@@ -153,8 +180,6 @@ zone_node_t *node_shallow_copy(const zone_node_t *src, mm_ctx_t *mm)
 	if (dst == NULL) {
 		return NULL;
 	}
-
-	dst->flags = src->flags;
 
 	// copy RRSets
 	dst->rrset_count = src->rrset_count;
@@ -189,7 +214,11 @@ int node_add_rrset(zone_node_t *node, const knot_rrset_t *rrset, mm_ctx_t *mm)
 			if (ret != KNOT_EOK) {
 				return ret;
 			} else {
-				return ttl_err ? KNOT_ETTL : KNOT_EOK;
+				if (ttl_err) {
+					return KNOT_ETTL;
+				} else {
+					return KNOT_EOK;
+				}
 			}
 		}
 	}
@@ -243,6 +272,15 @@ knot_rdataset_t *node_rdataset(const zone_node_t *node, uint16_t type)
 	}
 
 	return NULL;
+}
+
+bool node_is_deleg(const zone_node_t *node)
+{
+	if (node == NULL) {
+		return false;
+	}
+
+	return node_rrtype_exists(node, KNOT_RRTYPE_NS) && !node_rrtype_exists(node, KNOT_RRTYPE_SOA);
 }
 
 bool node_rrtype_is_signed(const zone_node_t *node, uint16_t type)
