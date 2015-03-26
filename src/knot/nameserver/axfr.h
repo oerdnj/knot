@@ -33,8 +33,6 @@
 struct query_data;
 struct answer_data;
 
-#warning get rid of generic context, or use a better structure
-
 /*! \brief Generic transfer processing state. */
 struct xfr_proc {
 	list_t nodes;    /* Items to process (ptrnode_t). */

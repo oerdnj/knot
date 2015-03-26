@@ -109,7 +109,7 @@ static int axfr_query_check(struct query_data *qdata)
 {
 	/* Check valid zone, transaction security and contents. */
 	NS_NEED_ZONE(qdata, KNOT_RCODE_NOTAUTH);
-	NS_NEED_AUTH(&qdata->zone->conf->acl.xfr_out, qdata);
+	NS_NEED_AUTH(&qdata->zr.zone->conf->acl.xfr_out, qdata);
 	/* Check expiration. */
 	NS_NEED_ZONE_CONTENTS(qdata, KNOT_RCODE_SERVFAIL);
 
@@ -133,7 +133,7 @@ static int axfr_query_init(struct query_data *qdata)
 	/* Create transfer processing context. */
 	mm_ctx_t *mm = qdata->mm;
 
-	zone_contents_t *zone = qdata->zone->contents;
+	zone_contents_t *zone = qdata->zr.zone->contents;
 	struct axfr_proc *axfr = mm_alloc(mm, sizeof(struct axfr_proc));
 	if (axfr == NULL) {
 		return KNOT_ENOMEM;
@@ -171,7 +171,7 @@ int xfr_process_list(knot_pkt_t *pkt, xfr_put_cb process_item,
 	mm_ctx_t *mm = qdata->mm;
 	struct xfr_proc *xfer = qdata->ext;
 
-	zone_contents_t *zone = qdata->zone->contents;
+	zone_contents_t *zone = qdata->zr.zone->contents;
 	knot_rrset_t soa_rr = node_rrset(zone->apex, KNOT_RRTYPE_SOA);
 
 	/* Prepend SOA on first packet. */
@@ -236,7 +236,7 @@ int axfr_query_process(knot_pkt_t *pkt, struct query_data *qdata)
 			return KNOT_NS_PROC_FAIL;
 		} else {
 			AXFROUT_LOG(LOG_INFO, "started, serial %u",
-			           zone_contents_serial(qdata->zone->contents));
+			           zone_contents_serial(qdata->zr.zone->contents));
 		}
 	}
 
@@ -321,13 +321,12 @@ static int axfr_answer_finalize(struct answer_data *adata)
 		return ret;
 	}
 
-#warning logs with serials
-//	AXFRIN_LOG(LOG_INFO, "finished, "
-//	           "serial %u -> %u, %.02f seconds, %u messages, %u bytes",
-//	           zone_contents_serial(old_contents),
-//	           zone_contents_serial(proc->contents),
-//	           time_diff(&proc->tstamp, &now) / 1000.0,
-//	           proc->npkts, proc->nbytes);
+	AXFRIN_LOG(LOG_INFO, "finished, "
+	           "serial %u -> %u, %.02f seconds, %u messages, %u bytes",
+	           zone_contents_serial(proc->update.zone->contents),
+	           zone_update_current_serial(&proc->update),
+	           time_diff(&proc->tstamp, &now) / 1000.0,
+	           proc->npkts, proc->nbytes);
 
 	return KNOT_EOK;
 }
