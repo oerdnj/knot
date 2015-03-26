@@ -296,6 +296,8 @@ libknotd_la_SOURCES =				\
 	knot/worker/queue.h			\
 	knot/zone/contents.c			\
 	knot/zone/contents.h			\
+	knot/zone/adjust.c			\
+	knot/zone/adjust.h			\
 	knot/zone/events/events.c		\
 	knot/zone/events/events.h		\
 	knot/zone/events/handlers.c		\
