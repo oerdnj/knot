@@ -47,54 +47,27 @@ static void rrs_list_clear(list_t *l, mm_ctx_t *mm)
 }
 
 /*! \brief Frees additional data from single node */
-static int free_additional(zone_node_t **node, void *data)
+static int free_additional(zone_node_t *node, void *data)
 {
 	UNUSED(data);
-	if ((*node)->flags & NODE_FLAGS_NONAUTH) {
-		// non-auth nodes have no additionals.
-		return KNOT_EOK;
-	}
-
-	for (uint16_t i = 0; i < (*node)->rrset_count; ++i) {
-		struct rr_data *data = &(*node)->rrs[i];
-		if (data->additional) {
-			free(data->additional);
-			data->additional = NULL;
+	for (uint16_t i = 0; i < node->rrset_count; ++i) {
+		struct rr_data *rr_data = &node->rrs[i];
+		if (rr_data->additional) {
+			free(rr_data->additional);
+			rr_data->additional = NULL;
 		}
 	}
 
 	return KNOT_EOK;
 }
 
-/* ------------------------- Empty node cleanup ----------------------------- */
-
-/*! \brief Clears wildcard child if set in parent node. */
-static void fix_wildcard_child(zone_node_t *node, const knot_dname_t *owner)
+static int free_node_data(zone_node_t *node, void *data)
 {
-	if ((node->flags & NODE_FLAGS_WILDCARD_CHILD)
-	    && knot_dname_is_wildcard(owner)) {
-		node->flags &= ~NODE_FLAGS_WILDCARD_CHILD;
-	}
-}
-
-/*! \todo move this to new zone API - zone should do this automatically. */
-/*! \brief Deletes possibly empty node and all its empty parents recursively. */
-static void delete_empty_node(zone_tree_t *tree, zone_node_t *node)
-{
-	if (node->rrset_count == 0 && !zone_contents_has_children(tree, node->owner)) {
-		zone_node_t *parent_node = node->parent;
-		if (parent_node) {
-			fix_wildcard_child(parent_node, node->owner);
-			// Recurse using the parent node
-			delete_empty_node(tree, parent_node);
-		}
-
-		// Delete node
-		zone_node_t *removed_node = NULL;
-		zone_tree_remove(tree, node->owner, &removed_node);
-		UNUSED(removed_node);
+	if (node) {
 		node_free(&node, NULL);
 	}
+
+	return KNOT_EOK;
 }
 
 /* -------------------- Changeset application helpers ----------------------- */
@@ -182,22 +155,8 @@ static bool can_remove(const zone_node_t *node, const knot_rrset_t *rr)
 	return false;
 }
 
-/*! \todo part of the new zone API. */
-static bool rrset_is_nsec3rel(const knot_rrset_t *rr)
-{
-	if (rr == NULL) {
-		return false;
-	}
-
-	/* Is NSEC3 or non-empty RRSIG covering NSEC3. */
-	return ((rr->type == KNOT_RRTYPE_NSEC3)
-	        || (rr->type == KNOT_RRTYPE_RRSIG
-	            && knot_rrsig_type_covered(&rr->rrs, 0)
-	            == KNOT_RRTYPE_NSEC3));
-}
-
 /*! \brief Removes single RR from zone contents. */
-static int remove_rr(zone_tree_t *tree, zone_node_t *node,
+static int remove_rr(zone_contents_t *zone, zone_tree_t *tree, zone_node_t *node,
                      const knot_rrset_t *rr, changeset_t *chset)
 {
 	knot_rrset_t removed_rrset = node_rrset(node, rr->type);
@@ -234,7 +193,7 @@ static int remove_rr(zone_tree_t *tree, zone_node_t *node,
 		node_remove_rdataset(node, rr->type);
 		// If node is empty now, delete it from zone tree.
 		if (node->rrset_count == 0) {
-			delete_empty_node(tree, node);
+			zone_contents_delete_empty_node(zone, tree, node);
 		}
 	}
 
@@ -257,9 +216,9 @@ static int apply_remove(zone_contents_t *contents, changeset_t *chset)
 			continue;
 		}
 
-		zone_tree_t *tree = rrset_is_nsec3rel(&rr) ?
+		zone_tree_t *tree = zone_contents_rrset_is_nsec3rel(&rr) ?
 		                    contents->nsec3_nodes : contents->nodes;
-		int ret = remove_rr(tree, node, &rr, chset);
+		int ret = remove_rr(contents, tree, node, &rr, chset);
 		if (ret != KNOT_EOK) {
 			changeset_iter_clear(&itt);
 			return ret;
@@ -306,7 +265,7 @@ static int add_rr(const zone_contents_t *zone, zone_node_t *node,
 
 		if (ret == KNOT_ETTL) {
 			// Handle possible TTL errors.
-			log_ttl_error(zone, node, rr);
+			log_ttl_error(zone->apex->owner, rr, master);
 			if (!master) {
 				// TTL errors fatal only for master.
 				return KNOT_EOK;
@@ -349,7 +308,7 @@ static int apply_add(zone_contents_t *contents, changeset_t *chset,
 static int apply_replace_soa(zone_contents_t *contents, changeset_t *chset)
 {
 	assert(chset->soa_from && chset->soa_to);
-	int ret = remove_rr(contents->nodes, contents->apex, chset->soa_from, chset);
+	int ret = remove_rr(contents, contents->nodes, contents->apex, chset->soa_from, chset);
 	if (ret != KNOT_EOK) {
 		return ret;
 	}
@@ -417,17 +376,6 @@ static int prepare_zone_copy(zone_contents_t *old_contents,
 	return KNOT_EOK;
 }
 
-/*! \brief Removes empty nodes from updated zone a does zone adjusting. */
-static int finalize_updated_zone(zone_contents_t *contents_copy,
-                                 bool set_nsec3_names)
-{
-	if (contents_copy == NULL) {
-		return KNOT_EINVAL;
-	}
-	
-#warning adjust
-}
-
 /* ------------------------------- API -------------------------------------- */
 
 int apply_changeset(zone_t *zone, changeset_t *change, zone_contents_t **new_contents)
@@ -455,13 +403,6 @@ int apply_changeset(zone_t *zone, changeset_t *change, zone_contents_t **new_con
 		return ret;
 	}
 
-	ret = finalize_updated_zone(contents_copy, true);
-	if (ret != KNOT_EOK) {
-		update_rollback(change);
-		update_free_zone(&contents_copy);
-		return ret;
-	}
-
 	*new_contents = contents_copy;
 
 	return KNOT_EOK;
@@ -475,12 +416,6 @@ int apply_changeset_directly(zone_contents_t *contents, changeset_t *ch)
 
 	const bool master = true; // Only DNSSEC changesets are applied directly.
 	int ret = apply_single(contents, ch, master);
-	if (ret != KNOT_EOK) {
-		update_cleanup(ch);
-		return ret;
-	}
-
-	ret = finalize_updated_zone(contents, true);
 	if (ret != KNOT_EOK) {
 		update_cleanup(ch);
 		return ret;
@@ -515,9 +450,9 @@ void update_rollback(changeset_t *change)
 
 void update_free_zone(zone_contents_t **contents)
 {
-	zone_tree_apply((*contents)->nodes, free_additional, NULL);
-	zone_tree_deep_free(&(*contents)->nodes);
-	zone_tree_deep_free(&(*contents)->nsec3_nodes);
+	zone_tree_apply((*contents)->nodes, free_additional, NULL, false);
+	zone_tree_apply((*contents)->nodes, free_node_data, NULL, false);
+	zone_tree_apply((*contents)->nsec3_nodes, free_node_data, NULL, false);
 
 	free(*contents);
 	*contents = NULL;
