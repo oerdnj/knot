@@ -52,7 +52,7 @@ static int notify_check_query(struct query_data *qdata)
 	NS_NEED_QTYPE(qdata, KNOT_RRTYPE_SOA, KNOT_RCODE_FORMERR);
 
 	/* Check valid zone, transaction security. */
-	zone_t *zone = (zone_t *)qdata->zone;
+	zone_t *zone = (zone_t *)qdata->zr.zone;
 	NS_NEED_ZONE(qdata, KNOT_RCODE_NOTAUTH);
 	NS_NEED_AUTH(&zone->conf->acl.notify_in, qdata);
 
@@ -97,7 +97,7 @@ int notify_process_query(knot_pkt_t *pkt, struct query_data *qdata)
 	}
 
 	/* Incoming NOTIFY expires REFRESH timer and renews EXPIRE timer. */
-	zone_t *zone = (zone_t *)qdata->zone;
+	zone_t *zone = (zone_t *)qdata->zr.zone;
 	zone_events_schedule(zone, ZONE_EVENT_REFRESH, ZONE_EVENT_NOW);
 	int ret = zone_events_write_persistent(zone);
 	if (ret != KNOT_EOK) {

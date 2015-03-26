@@ -143,7 +143,7 @@ static int forward_addr_parse(struct query_data *qdata, synth_template_t *tpl, c
 static int addr_parse(struct query_data *qdata, synth_template_t *tpl, char *addr_str)
 {
 	/* Check if we have at least 1 label below zone. */
-	int zone_labels = knot_dname_labels(qdata->zone->name, NULL);
+	int zone_labels = knot_dname_labels(qdata->zr.zone->name, NULL);
 	int query_labels = knot_dname_labels(qdata->name, qdata->query->wire);
 	if (query_labels < zone_labels + 1) {
 		return KNOT_EINVAL;
