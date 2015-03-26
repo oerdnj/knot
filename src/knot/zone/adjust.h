@@ -26,7 +26,9 @@
 
 #include "knot/updates/zone-update.h"
 
-// adjusts: prev pointers, node flags, nsec3 nodes
-int zone_adjust(zone_update_t *up);
+// adjusts: prev pointers, nsec3 nodes, parent nodes, additional nodes
+int zone_adjust_full(zone_update_t *up);
+int zone_adjust_partial(zone_update_t *up);
+int zone_adjust_minimal(zone_update_t *up);
 
 /*! @} */
