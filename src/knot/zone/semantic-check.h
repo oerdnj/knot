@@ -29,6 +29,21 @@
 #include "knot/zone/node.h"
 #include "knot/updates/zone-update.h"
 
-int sem_check_node(zone_update_t *up, const zone_node_t *node);
+typedef enum {
+	TTL_MISMATCH = 0,
+	CNAME_EXTRA_RECORDS,
+	CNAME_MULTIPLE,
+	SEMCHECK_LAST
+} semcheck_err_t;
+
+void log_semantic_error(const knot_dname_t *zone_name,
+                        const knot_dname_t *node_name,
+                        semcheck_err_t error);
+
+void log_semantic_warning(const knot_dname_t *zone_name,
+                          const knot_dname_t *node_name,
+                          semcheck_err_t error);
+
+bool sem_check_node(zone_update_t *up, const zone_node_t *node);
 
 /*! @} */
