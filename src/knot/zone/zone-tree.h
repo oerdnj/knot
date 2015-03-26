@@ -31,11 +31,11 @@
 /*----------------------------------------------------------------------------*/
 
 typedef struct zone_tree {
-	namedb_api_t *api;
+	const namedb_api_t *api;
 	namedb_t *db;
 } zone_tree_t;
 
-zone_tree_t *zone_tree_create(const namedb_api_t *api, mm_ctx_t *mm);
+int zone_tree_init(zone_tree_t *tree, const namedb_api_t *api, mm_ctx_t *mm);
 
 /*!
  * \brief Return weight of the zone tree (number of nodes).
@@ -66,12 +66,8 @@ bool zone_tree_is_empty(const zone_tree_t *tree);
 int zone_tree_insert(zone_tree_t *tree, zone_node_t *node);
 
 zone_node_t *zone_tree_get(zone_tree_t *tree, const knot_dname_t *owner);
-
-zone_node_t *zone_tree_get_next(zone_tree_t *tree,
-                                const knot_dname_t *owner);
-
-zone_node_t *zone_tree_get_prev(zone_tree_t *tree,
-                                const knot_dname_t *owner);
+zone_node_t *zone_tree_get_next(zone_tree_t *tree, const knot_dname_t *owner);
+zone_node_t *zone_tree_get_prev(zone_tree_t *tree, const knot_dname_t *owner);
 
 /*!
  * \brief Removes node with the given owner from the zone tree and returns it.
@@ -86,21 +82,11 @@ int zone_tree_remove(zone_tree_t *tree,
                      const knot_dname_t *owner,
                      zone_node_t **removed);
 
-/*!
- * \brief Destroys the zone tree, not touching the saved data.
- *
- * \param tree Zone tree to be destroyed.
- */
-void zone_tree_free(zone_tree_t **tree);
+void zone_tree_clear(zone_tree_t *tree);
+void zone_tree_clear_data(zone_tree_t *tree);
 
-/*!
- * \brief Destroys the zone tree, together with the saved data.
- *
- * \param tree Zone tree to be destroyed.
- * \param free_owners Set to <> 0 if owners of the nodes should be destroyed
- *                    as well. Set to 0 otherwise.
- */
-void zone_tree_deep_free(zone_tree_t **tree);
+typedef int (ztree_cb_t)(zone_node_t *, void *);
+int zone_tree_apply(zone_tree_t *tree, ztree_cb_t *cb, void *data, bool sorted);
 
 /*----------------------------------------------------------------------------*/
 
