@@ -105,14 +105,14 @@ int ns_put_rr(knot_pkt_t *pkt, const knot_rrset_t *rr,
 
 /*! \brief Require existing zone or return failure. */
 #define NS_NEED_ZONE(qdata, error_rcode) \
-	if ((qdata)->zone == NULL) { \
+	if ((qdata)->zr.zone == NULL) { \
 		qdata->rcode = (error_rcode); \
 		return KNOT_NS_PROC_FAIL; \
 	}
 
 /*! \brief Require existing zone contents or return failure. */
 #define NS_NEED_ZONE_CONTENTS(qdata, error_rcode) \
-	if ((qdata)->zone->contents == NULL) { \
+	if ((qdata)->zr.zone->contents == NULL) { \
 		qdata->rcode = (error_rcode); \
 		return KNOT_NS_PROC_FAIL; \
 	}
